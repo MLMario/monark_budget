@@ -17,6 +17,10 @@ class DataImportPipeline:
         self.transaction_data = None
         self.mongo_client = MongoDBClient()
 
+        print("MONARK_USER:", Settings.MONARK_USER)
+        print("MONARK_DD_ID:", Settings.MONARK_DD_ID)
+        print("MONARK_PW is set:", bool(Settings.MONARK_PW))
+
     async def run_pipeline(self):
 
         print("Initiating data import from MonarchMoney...")
