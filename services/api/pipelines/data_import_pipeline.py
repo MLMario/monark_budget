@@ -20,7 +20,11 @@ class DataImportPipeline:
         print("MONARK_USER:", Settings.MONARK_USER)
         print("MONARK_DD_ID:", Settings.MONARK_DD_ID)
         print("MONARK_PW is set:", bool(Settings.MONARK_PW))
+        
+        print("MONGO_DB:", Settings.MONGO_DB)
+        print("MONGO_URL is set:", bool(Settings.MONGO_URL))
 
+    
     async def run_pipeline(self):
 
         print("Initiating data import from MonarchMoney...")
