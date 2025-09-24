@@ -38,12 +38,15 @@ class MonarkImport:
 
         if not self._logged_in or self.monarch is None:
             print("Must be logged in before using method :).")
+            raise Exception("Failed to login to MonarchMoney. Aborting import.")
+
 
     async def monarch_login(
             self, pw: str, user: str, mfa_code: str = None) -> bool: 
 
         try:
             
+            print("Attempting to log in to MonarchMoney...")
             await self.monarch.login(user, pw)
 
             self._logged_in = True 
@@ -60,7 +63,10 @@ class MonarkImport:
             return True
 
         except Exception as e:
+
             print(f"Error initializing MonarchMoney: {e}")
+            raise Exception("Failed to login to MonarchMoney. Aborting import.")
+
             self._logged_in = False
             return False
 
