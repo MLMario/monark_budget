@@ -25,7 +25,7 @@ def get_env_file_path():
     return None
 
 
-class Settings(BaseSettings):git 
+class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=get_env_file_path(),

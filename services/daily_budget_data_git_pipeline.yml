@@ -1,0 +1,62 @@
+name: Daily Data Import Pipeline
+
+on:
+  schedule:
+    # Runs at 6:00 AM PST every day
+    # PST is UTC-8, so 6:00 AM PST = 2:00 PM UTC
+    # PDT (summer) is UTC-7, so 6:00 AM PDT = 1:00 PM UTC
+    # Using 14:00 UTC which is 6:00 AM PST / 7:00 AM PDT
+    - cron: '0 14 * * *'
+  
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'  # Match your local Python version
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Core data processing dependencies
+        pip install pandas>=2.0.0
+        pip install pymongo>=4.9.2
+        pip install pymongo[srv]
+        
+        # Configuration and validation
+        pip install pydantic>=2.10.6
+        pip install pydantic-settings>=2.7.1
+        
+        # MonarchMoney API and HTTP dependencies
+        pip install monarchmoney>=0.1.6
+        pip install aiohttp>=3.8.0
+        pip install requests>=2.25
+        
+        # GraphQL dependencies for MonarchMoney
+        pip install gql[all]>=3.0.0
+        pip install graphql-core>=3.0.0
+        
+        # Authentication dependencies
+        pip install oathtool>=2.3.0
+        
+        # Additional utilities
+        pip install python-dotenv
+    
+    - name: Run Data Import Pipeline
+      env:
+        MONARK_PW: ${{ secrets.MONARK_PW }}
+        MONARK_USER: ${{ secrets.MONARK_USER }}
+        MONARK_DD_ID: ${{ secrets.MONARK_DD_ID }}
+        MONGO_URL: ${{ secrets.MONGO_URL }}
+        MONGO_DB: ${{ secrets.MONGO_DB }}
+      run: |
+        python -m services.api.pipelines.data_import_pipeline
