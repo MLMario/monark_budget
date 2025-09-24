@@ -1,0 +1,50 @@
+[project]
+name = "monark_app"
+version = "0.1.0"
+description = "Application to Track Expenses and Increase Compliance to Budget Guidelines"
+readme = "README.md"
+license = { text = "None" }
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.115.8",
+    "langchain-core>=0.3.34",
+    "langchain-groq>=0.2.4",
+    "langchain-mongodb>=0.4.0",
+    "langgraph>=0.2.70",
+    "langgraph-checkpoint-mongodb>=0.1.0",
+    "opik>=1.4.11",
+    "pre-commit>=4.1.0",
+    "pydantic-settings>=2.7.1",
+    "pymongo>=4.9.2",
+    "loguru>=0.7.3",
+    "langchain-huggingface>=0.1.2",
+    "langchain-community>=0.3.17",
+    "wikipedia>=1.4.0",
+    "ipykernel>=6.29.5",
+    "pydantic>=2.10.6",
+    "datasketch>=1.6.5",
+    "uvicorn[standard]==0.30.0",
+    "httpx==0.27.0",
+    "celery==5.4.0",
+    "redis==5.0.6",
+    "langchain-deepseek>=0.1.4",
+    "pandas>=2.0.0",
+    "monarchmoney>=0.1.6",
+    "requests>=2.25"
+]
+
+[tool.pip]
+extra-index-url = "https://download.pytorch.org/whl/cpu/torch_stable.html"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["infrastructure"]
+
+[tool.ruff]
+target-version = "py312"
+
+
+
