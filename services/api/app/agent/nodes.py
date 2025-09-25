@@ -1,8 +1,10 @@
 from services.api.app.agent import state
-from services.api.pipelines.mongo_client import MongoDBClient
+from services.api.pipelines.mongo_client import AsyncMongoDBClient
 
-from services.api.app.agent.state import BudgetAgentState, BudgetData, BudgetRow, OverspendBudgetData, TransactionRow
-from services.api.app.agent.agent_utilities import filter_overspent_categories
+from services.api.app.agent.state import BudgetAgentState, BudgetData, BudgetRow, OverspendBudgetData, TransactionRow, DailyAlertOverspend
+from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm
+
+from services.api.app.domain.prompts import BUDGET_ALERT_PROMPT
 
 import logging
 from datetime import datetime,timedelta
@@ -49,13 +51,13 @@ logger = logging.getLogger(__name__)
     
 """
 
-def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
+async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
 
     #Create MongoDB Client to Import Data 
-    mongo_client = MongoDBClient() 
+    mongo_client = AsyncMongoDBClient() 
 
     logger.info("Importing Budget Data from MongoDB [START]")
-    budget_json = mongo_client.import_budget_data()
+    budget_json = await mongo_client.import_budget_data(filter_query={'category_group_type': 'expense'})
     
     # Data Model Validation Processing (Implicit given the use of Pydantic models)
     budget_list_data = json.loads(budget_json)
@@ -69,13 +71,16 @@ def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
 
     overspend_json = filter_overspent_categories(budget_json) 
 
-    # Data Model Validation Processing (Implicit given the use of Pydantic models)
-    overspend_list_data = json.loads(overspend_json)
-    overspend_rows = [BudgetRow(**row) for row in overspend_list_data]
-    pydantic_overspend_budget_model = OverspendBudgetData(overspend_categories=overspend_rows)
+    if not overspend_json:
+        state.overspend_budget_data = "No Data, User hasn't overspent"
+    else:
+        # Data Model Validation Processing (Implicit given the use of Pydantic models)
+        overspend_list_data = json.loads(overspend_json)
+        overspend_rows = [BudgetRow(**row) for row in overspend_list_data]
+        pydantic_overspend_budget_model = OverspendBudgetData(overspend_categories=overspend_rows)
 
-    # we want the budget data as one json string so that model can look at it all at once, it will not evaluate each category but make an alert message summary
-    state.overspend_budget_data = pydantic_overspend_budget_model.model_dump_json()
+        # we want the budget data as one json string so that model can look at it all at once, it will not evaluate each category but make an alert message summary
+        state.overspend_budget_data = pydantic_overspend_budget_model.model_dump_json()
     logger.info("Filtering Overspent Categories [DONE]")
 
 
@@ -84,7 +89,7 @@ def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
     last_day = datetime.now() - timedelta(days=1)
     last_day_str = last_day.strftime('%Y-%m-%d')
 
-    transactions_json = mongo_client.import_transaction_data(start_date=last_day_str, end_date=last_day_str)
+    transactions_json = await mongo_client.import_transaction_data(start_date=last_day_str, end_date=last_day_str)
     
     # Convert JSON string to TransactionRow objects
     transactions_list_data = json.loads(transactions_json)
@@ -96,11 +101,11 @@ def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
     return state
 
 #it just so that it re-route tasks depending on the day
-def coordinator_node(state: BudgetAgentState) -> BudgetAgentState:
+async def coordinator_node(state: BudgetAgentState) -> BudgetAgentState:
 
     return state
 
-def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentState:
+async def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentState:
 
     """ 
     - Input: OverspendBudgetData from state
@@ -111,9 +116,17 @@ def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentState:
     
     """
 
-    overspend_budget_str = state.overspend_budget_data
+    overspend_budget_data = state.overspend_budget_data
 
+    response_text = await call_llm(
+        temperature=0.8,
+        prompt_obj = BUDGET_ALERT_PROMPT,
+        budget_data = overspend_budget_data
+    )
 
-
+    state.daily_overspend_alert = DailyAlertOverspend(
+        kind="daily_overspend_alert",
+        text=response_text
+    )
 
     return state

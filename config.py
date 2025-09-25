@@ -35,7 +35,7 @@ class Settings(BaseSettings):
         env_ignore_empty=True
     )
 
-    MONARK_PW: str = Field(
+    MONARK_PW: SecretStr = Field(
         description = "Password used to extract transaction data and budget data",
         env = "MONARK_PW"
     )
@@ -45,12 +45,12 @@ class Settings(BaseSettings):
         env = "MONARK_USER"
     )
 
-    MONARK_DD_ID: str = Field(
+    MONARK_DD_ID: SecretStr = Field(
         description = "Device ID for the Monark account",
         env = "MONARK_DD_ID"
     )
 
-    MONGO_URL: str = Field(
+    MONGO_URL: SecretStr = Field(
         description = "MongoDB connection string",  
         env = "MONGO_URL"
     )
@@ -60,5 +60,17 @@ class Settings(BaseSettings):
         env = "MONGO_DB"
     )
 
+    GROQ_API_KEY: SecretStr = Field(
+        description = "API key for Groq",
+        env = "GROQ_API_KEY"
+    )
+
+    GROQ_LLAMA_VERSATILE: str = Field(
+        default = "llama-3.3-70b-versatile"
+    )
+
+    GROQ_LLAMA_INSTRUCT: str = Field(
+        default = "llama-3.3-70b-instruct"
+    )
 
 Settings = Settings()

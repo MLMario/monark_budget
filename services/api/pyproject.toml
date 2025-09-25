@@ -16,6 +16,7 @@ dependencies = [
     "pre-commit>=4.1.0",
     "pydantic-settings>=2.7.1",
     "pymongo>=4.9.2",
+    "motor>=3.7",
     "loguru>=0.7.3",
     "langchain-huggingface>=0.1.2",
     "langchain-community>=0.3.17",
@@ -30,7 +31,12 @@ dependencies = [
     "langchain-deepseek>=0.1.4",
     "pandas>=2.0.0",
     "monarchmoney>=0.1.6",
-    "requests>=2.25"
+    "requests>=2.25",
+    "botocore>=1.40.3",
+    "jmespath>=1.0.1",
+    "playwright>=1.55.0",
+    "pyee>=13.0.0",
+    "websockets>=15.0.1"
 ]
 
 [tool.pip]

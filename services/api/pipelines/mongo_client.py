@@ -2,11 +2,12 @@ from pymongo import MongoClient
 from config import Settings
 import json
 from typing import Optional
+from motor.motor_asyncio import AsyncIOMotorClient
 
 
 class MongoDBClient:
     def __init__(self):
-        self.client = MongoClient(Settings.MONGO_URL)
+        self.client = MongoClient(Settings.MONGO_URL.get_secret_value())
         self.db = self.client[Settings.MONGO_DB]
         self.budgets_collection = self.db['budget']
         self.transactions_collection = self.db['transactions']
@@ -21,17 +22,28 @@ class MongoDBClient:
         self.transactions_collection.delete_many({})
         self.transactions_collection.insert_many(transaction_data)
 
-    def import_budget_data(self, filter_query: Optional[dict] = None):
+    def close_connection(self):
+        self.client.close()
+
+class AsyncMongoDBClient:
+
+    def __init__(self):
+        self.client = AsyncIOMotorClient(Settings.MONGO_URL.get_secret_value())
+        self.db = self.client[Settings.MONGO_DB]
+        self.budgets_collection = self.db['budget']
+        self.transactions_collection = self.db['transactions']
+
+    async def import_budget_data(self, filter_query: Optional[dict] = None):
 
         if filter_query is None:
             filter_query = {}
 
         cursor = self.budgets_collection.find(filter_query, {"_id": 0})  # Exclude MongoDB _id field
-        documents = list(cursor)
+        documents = await cursor.to_list(length=None)  # Get all documents
         
         return json.dumps(documents, default=str)
 
-    def import_transaction_data(self, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    async def import_transaction_data(self, start_date: Optional[str] = None, end_date: Optional[str] = None):
 
         filter_query = {}
         
@@ -48,9 +60,10 @@ class MongoDBClient:
             filter_query["createdAt"] = date_filter
             
         cursor = self.transactions_collection.find(filter_query, {"_id": 0})  # Exclude MongoDB _id field
-        documents = list(cursor)
+        documents = await cursor.to_list(length=None)  # Get all documents
         
         return json.dumps(documents, default=str)
     
     def close_connection(self):
         self.client.close()
+
