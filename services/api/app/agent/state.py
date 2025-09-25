@@ -37,7 +37,7 @@ class RunMeta(BaseModel):
 class BudgetRow(BaseModel):
 
     actual_amount: float
-    category_budget_variability: Optional[Literal["fixed", "flexible", "income","goals","expense"]] = None
+    category_budget_variability: Optional[Literal["fixed", "flexible", "income","goals","expense","non_monthly"]] = None
     category_group_name:str
     category_group_type: str
     category_name: str
@@ -58,19 +58,10 @@ class TransactionRow(BaseModel):
     updatedAt: str
 
 class BudgetData(BaseModel):
-    current_month_budget: List[BudgetRow]
-
-class DailyOverspendCategory(BaseModel):
-    category_budget_variability: Optional[Literal["fixed", "flexible", "income","goals","expense"]] = None
-    category_group_name: str 
-    category_name: str
-    planned_cash_flow_amount: float
-    actual_amount: float
-    remaining_amount: float
-    overspent_amount: float
+    current_month_budget: List[BudgetRow] = []
 
 class OverspendBudgetData(BaseModel):
-    overspend_categories: List[DailyOverspendCategory] = []
+    overspend_categories: List[BudgetRow] = []
 
 class DailyAlertOverspend(BaseModel):
     kind: str = "daily_overspend_alert"
@@ -85,7 +76,7 @@ class DailyAlertSuspiciousTransaction(BaseModel):
     text: str = "No Suspicious Transactions Today"
 
 class ReportCategory(BaseModel):
-    category_budget_variability: Optional[Literal["fixed", "flexible", "income","goals","expense"]] = None
+    category_budget_variability: Optional[Literal["fixed", "flexible", "income","goals","expense","non_monthly"]] = None
     category_name: str
     category_group_name: str
     overspent_amount: float
@@ -122,61 +113,27 @@ class BudgetAgentState(BaseModel):
     
 # Agent imports data
     # imports from Mongo Db
-    current_month_budget: Optional[BudgetData] = None
+    current_month_budget: Optional[str] = None
     current_month_txn: List[TransactionRow] = []
     previous_month_txn: List[TransactionRow] = []
 
-    #Filtters last day txn, identifies over spend categories
-    last_day_txn: List[TransactionRow] = [] #filter last day transactions adds them o a list last_day_txn
-    overspend_budget_data: OverspendBudgetData # cycles through each budget cateory, checks if its overspend, if so, it creates DailyOverspendCategory instance and adds to list OverspendBudgetData.overspend_categories
-
-    #Agent Evaluates Period
+    last_day_txn: List[str] = [] #filter last day transactions adds them o a list last_day_txn
+    overspend_budget_data: Optional[str] = None # cycles through each budget cateory, checks if its overspend, if so, it creates DailyOverspendCategory instance and adds to list OverspendBudgetData.overspend_categories
 
     period_info: PeriodInfo #will need helper function to determine if its end of week or month
 
-    # For Every Day:
-
-    # agent takes overspend_budget_data and outputs a DailyAlertOverspend
-    # input: overspend_budget_data
-    # agent looks at overspend_budget_data AS ONE INPUT and uses prompt to create a DailyAlertOverspend with kind = "daily_overspend_alert", text = "you have overspent in the following categories ..."
     daily_overspend_alert: DailyAlertOverspend
-    # set ProcessFlag.daily_overspend_alert_done = True
-
-    # Agent identifies suspicious transactions from last day txn
-    # input: last_day_txn
-    # Action: LLM looks at last_day_txn AND LOOPS THROUGH EACH LAST DAY TRANSACTION , LLM will evaluate if a txn is suspicious or not and adds to state:
-    # DailySuspiciousTransaction 
 
     daily_suspicious_transactions: list[DailySuspiciousTransaction] = []
 
-    # we call an LLM to write a fictional funny story where characters Alicia, Mario or Both them go through the day and do this transactions and how they learn their lesson on not doing it again!
-    # here the temperature can be higher to make it more fun
-    # kinds = "daily_suspicious_transaction_alert", text = "funny story about suspicious transactions"
 
     daily_alert_suspicious_transaction: DailyAlertSuspiciousTransaction
-    # set ProcessFlag.daily_suspicious_transaction_alert_done = True
-    # Action: LLM looks at last day txn and uses prompt to evaluate if a txn is suspicious or not and adds to state a DailySuspiciousTransaction instance
-    
-
-    # For End of Week or End of Month:
-
-    #Action:
-        # LLM Loops through  OverspendBudgetData.overspend_categories, create a ReportCategory instance, from previous and current month transactions it feches all transaction of the same category
-        # and feeds into LLM, LLM outputs drivers and recommended actions PER ReportCategory instance, as we loop through categories we update the ReportCategory instance
-        # and add to a list of PeriodReport.categories_in_report and PeriodReport.period from PeriodInfo.type (period_info.type)
-
-        # in the same node we pass PeriodReport.categories_in_report to an LLM to add PeriodReport.summary , PeriodReport.drivers, PeriodReport.recommended_actions, PeriodReport.funny_quip 
-
-        # output: PeriodReport instance
-        # opnce it finishes updates flag of period report done
 
     report_category: ReportCategory
 
     period_report: PeriodReport
 
     process_flag: ProcessFlag = Field(default_factory=ProcessFlag)
-
-    #After both process are done we go to the 
 
     email_info: Optional[EmailInfo] = None
 

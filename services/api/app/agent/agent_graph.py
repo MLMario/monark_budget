@@ -4,7 +4,18 @@ from datetime import datetime
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from .state import BudgetAgentState
-
+from .nodes import (
+    import_data_node, 
+    coordinator_node,
+      daily_overspend_alert_node,
+        daily_suspicious_transaction_alert_node, 
+        period_report_node,
+        wait_node,
+        policy_enforcer_node,
+        error_handler_node
+)
+from .agent_utilities import task_management
+from services.api.pipelines.mongo_client import MongoDBClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +51,11 @@ def create_budget_graph() -> StateGraph:
         - Updates process_flag.daily_suspicious_transaction_alert_done = True
 
     Period Tasks (EOW or EOM):
-    1) Period Report Node:
+
+    1) Import transaction data for overspend analysis node:
+        - import last month txn data and current month txn data from mongo db and updates it into state
+
+    2) Period Report Node:
         - Input: current_month_budget, current_month_txn, previous_month_txn from state
         - Action:
              LLM Loops through  OverspendBudgetData.overspend_categories, create a report_category instance, 
@@ -57,6 +72,7 @@ def create_budget_graph() -> StateGraph:
     graph_builder.add_node("coordinator_node", coordinator_node)
     graph_builder.add_node("daily_overspend_alert_node", daily_overspend_alert_node)
     graph_builder.add_node("daily_suspicious_transaction_alert_node", daily_suspicious_transaction_alert_node)
+    graph_builder.add_node('import_txn_data_for_period_report_node', import_txn_data_for_period_report_node)
     graph_builder.add_node("period_report_node", period_report_node)
     graph_builder.add_node("wait_node", wait_node)
     graph_builder.add_node("policy_enforcer_node", policy_enforcer_node)
@@ -67,10 +83,10 @@ def create_budget_graph() -> StateGraph:
 
     graph_builder.add_conditional_edges(
         "coordinator_node",
-        task_management_function,
+        task_management,
         {
             "daily_tasks": "daily_overspend_alert_node",
-            "both_tasks": ["daily_overspend_alert_node", "period_report_node"]
+            "both_tasks": ["daily_overspend_alert_node", "import_txn_data_for_period_report_node"]
         }
 
     )
@@ -78,6 +94,7 @@ def create_budget_graph() -> StateGraph:
     graph_builder.add_edge("daily_overspend_alert_node","daily_suspicious_transaction_alert_node")
     graph_builder.add_edge("daily_suspicious_transaction_alert_node","wait_node")
 
+    graph_builder.add_edge("import_txn_data_for_period_report_node", "period_report_node")
     graph_builder.add_edge("period_report_node", "wait_node")
 
     graph_builder.add_conditional_edges("wait_node",

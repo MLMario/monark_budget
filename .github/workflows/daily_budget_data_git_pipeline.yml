@@ -29,10 +29,6 @@ jobs:
         mkdir -p .mm
         chmod 755 .mm
 
-
-
-
-
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -59,12 +55,7 @@ jobs:
         
         # Additional utilities
         pip install python-dotenv
-    
-    - name: Debug environment variables
-      run: |
-        echo "MONARK_USER=$MONARK_USER"
-        echo "MONARK_DD_ID=$MONARK_DD_ID"
-        # Don't print MONARK_PW for security
+
 
     - name: Run Data Import Pipeline
       env:
