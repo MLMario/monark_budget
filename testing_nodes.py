@@ -19,9 +19,27 @@ import asyncio
 # Add the services/api/app path to Python path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), 'services', 'api', 'app'))
 
-from agent.state import BudgetAgentState, RunMeta, BudgetData, BudgetRow, TransactionRow, OverspendBudgetData, ProcessFlag, PeriodInfo
-from agent.nodes import import_data_node, coordinator_node
-from agent.agent_utilities import filter_overspent_categories
+from agent.state import (  # type: ignore[import-not-found]
+    BudgetAgentState,
+    RunMeta,
+    BudgetData,
+    BudgetRow,
+    TransactionRow,
+    OverspendBudgetData,
+    ProcessFlag,
+    PeriodInfo,
+    DailyAlertSuspiciousTransaction,
+    DailyAlertOverspend,
+    ReportCategory,
+    PeriodReport,
+)
+from agent.nodes import (  # type: ignore[import-not-found]
+    import_data_node,
+    coordinator_node,
+    daily_suspicious_transaction_alert_node,
+)
+from agent import nodes as agent_nodes  # type: ignore[import-not-found]
+from agent.agent_utilities import filter_overspent_categories  # type: ignore[import-not-found]
 
 async def test_import_data_node():
     """Test the import_data_node function comprehensively"""
@@ -298,6 +316,140 @@ def test_coordinator_node():
         print(f"  Error: {e}")
         return False
 
+
+async def test_daily_suspicious_transaction_alert_node():
+    """Test daily_suspicious_transaction_alert_node end-to-end with mocked LLM responses."""
+
+    print("\n" + "=" * 60)
+    print("TESTING DAILY_SUSPICIOUS_TRANSACTION_ALERT_NODE")
+    print("=" * 60)
+
+    today = date.today()
+    period_start = today.replace(day=1)
+    period_end = (period_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    def build_base_state(last_day_txn_json: list[str]) -> BudgetAgentState:
+        return BudgetAgentState(
+            run_meta=RunMeta(
+                run_id=f"daily_suspicious_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                today=today,
+                tz="UTC",
+            ),
+            current_month_budget=None,
+            current_month_txn=[],
+            previous_month_txn=[],
+            last_day_txn=last_day_txn_json,
+            overspend_budget_data=None,
+            period_info=PeriodInfo(type="month", start=period_start, end=period_end),
+            daily_overspend_alert=DailyAlertOverspend(),
+            daily_suspicious_transactions=[],
+            daily_alert_suspicious_transaction=DailyAlertSuspiciousTransaction(),
+            report_category=ReportCategory(
+                category_name="test",
+                category_group_name="test",
+                overspent_amount=0.0,
+            ),
+            period_report=PeriodReport(period="test", categories_in_report=[]),
+            process_flag=ProcessFlag(),
+            email_info=None,
+        )
+
+    async def fake_call_llm(*args, **kwargs):
+        if "transaction" in kwargs:
+            txn_payload = json.loads(kwargs["transaction"])
+            is_suspicious = txn_payload.get("amount", 0) > 500
+            response = {
+                "funny_quip": "Big spender alert!" if is_suspicious else "All clear.",
+                "type": "suspicious" if is_suspicious else "not_suspicious",
+            }
+            return json.dumps(response)
+        if "transactions" in kwargs:
+            try:
+                suspicious_list = json.loads(kwargs["transactions"])
+            except json.JSONDecodeError:
+                suspicious_list = []
+            return f"Story time for {len(suspicious_list)} suspicious transaction(s)!"
+        return json.dumps({})
+
+    original_call_llm = agent_nodes.call_llm
+    agent_nodes.call_llm = fake_call_llm
+
+    try:
+        print("- Scenario 1: Suspicious transactions present")
+        suspicious_amount = TransactionRow(
+            amount=725.0,
+            category_id="cat_high",
+            category_name="Luxury Shopping",
+            createdAt="2024-05-03T08:00:00Z",
+            description="Designer Store",
+            merchant_id="m999",
+            merchant_name="Luxury Boutique",
+            transaction_id="txn_suspicious",
+            updatedAt="2024-05-03T09:00:00Z",
+        )
+        normal_amount = TransactionRow(
+            amount=45.0,
+            category_id="cat_coffee",
+            category_name="Coffee Shops",
+            createdAt="2024-05-03T10:00:00Z",
+            description="Morning Latte",
+            merchant_id="m111",
+            merchant_name="Cafe Delight",
+            transaction_id="txn_normal",
+            updatedAt="2024-05-03T10:05:00Z",
+        )
+
+        state_with_suspicious = build_base_state(
+            [suspicious_amount.model_dump_json(), normal_amount.model_dump_json()]
+        )
+
+        updated_state = await daily_suspicious_transaction_alert_node(state_with_suspicious)
+
+        story_text = updated_state.daily_alert_suspicious_transaction.text
+        story_passed = "Story time" in story_text and "1 suspicious" in story_text
+        flag_passed = updated_state.process_flag.daily_suspicious_transaction_alert_done is True
+
+        if story_passed and flag_passed:
+            print("  ✓ Suspicious transaction path: PASSED")
+            print(f"    Story output: {story_text}")
+        else:
+            print("  ✗ Suspicious transaction path: FAILED")
+            print(f"    Story output: {story_text}")
+
+        print("- Scenario 2: No suspicious transactions")
+        low_amount = TransactionRow(
+            amount=15.0,
+            category_id="cat_snack",
+            category_name="Snacks",
+            createdAt="2024-05-03T11:00:00Z",
+            description="Snack Stop",
+            merchant_id="m222",
+            merchant_name="Snack Shack",
+            transaction_id="txn_snack",
+            updatedAt="2024-05-03T11:05:00Z",
+        )
+
+        state_no_suspicious = build_base_state([low_amount.model_dump_json()])
+        updated_state_no_suspicious = await daily_suspicious_transaction_alert_node(state_no_suspicious)
+
+        no_story_text = updated_state_no_suspicious.daily_alert_suspicious_transaction.text
+        no_story_passed = no_story_text == "No 'Funny' Transactions Today"
+        no_flag_passed = (
+            updated_state_no_suspicious.process_flag.daily_suspicious_transaction_alert_done is True
+        )
+
+        if no_story_passed and no_flag_passed:
+            print("  ✓ No suspicious transaction path: PASSED")
+        else:
+            print("  ✗ No suspicious transaction path: FAILED")
+            print(f"    Message: {no_story_text}")
+
+        all_passed = story_passed and flag_passed and no_story_passed and no_flag_passed
+        return all_passed
+
+    finally:
+        agent_nodes.call_llm = original_call_llm
+
 async def main():
     print("Starting comprehensive testing of import_data_node...")
     
@@ -309,6 +461,9 @@ async def main():
     
     # Test the main import function
     import_test_passed = await test_import_data_node()
+
+    # Test the suspicious transaction alert node
+    suspicious_alert_test_passed = await test_daily_suspicious_transaction_alert_node()
     
     print("\n" + "=" * 60)
     print("FINAL TEST RESULTS")
@@ -316,8 +471,14 @@ async def main():
     print(f"Filter utility test: {'PASSED' if filter_test_passed else 'FAILED'}")
     print(f"Coordinator node test: {'PASSED' if coordinator_test_passed else 'FAILED'}")
     print(f"Import data node test: {'PASSED' if import_test_passed else 'FAILED'}")
+    print(f"Daily suspicious alert node test: {'PASSED' if suspicious_alert_test_passed else 'FAILED'}")
     
-    if filter_test_passed and coordinator_test_passed and import_test_passed:
+    if (
+        filter_test_passed
+        and coordinator_test_passed
+        and import_test_passed
+        and suspicious_alert_test_passed
+    ):
         print("\n🎉 ALL TESTS PASSED! The nodes are ready for production.")
     else:
         print("\n⚠️ SOME TESTS FAILED. Please review the issues above.")

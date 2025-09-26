@@ -34,9 +34,10 @@ def get_async_groq_client():
     return AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
 
 async def call_llm(
-        temperature = 0.7,
-        prompt_obj = None,
-          **kwargs):
+        temperature=0.7,
+        system_prompt="You are an expert financial assistant that helps users manage their budgets and finances effectively. You are also know for being funny and witty while providing financial advice.",
+        prompt_obj=None,
+        **kwargs):
 
     client = AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
     
@@ -45,13 +46,18 @@ async def call_llm(
     completion = await client.chat.completions.create(
         model=Settings.GROQ_LLAMA_VERSATILE,
 
-        messages=[
-            {"role": "user", 
-             "content": formatted_prompt}
-             ],
-        temperature = temperature,
+        messages=[{
+                "role": "system",
+                "content": system_prompt
+        }
+            ,{
+                "role": "user",
+                "content": formatted_prompt
+            }
+        ],
+        temperature=temperature,
 
-        max_tokens = 300
+        max_tokens=300
     )
     
     return completion.choices[0].message.content

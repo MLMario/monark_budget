@@ -56,7 +56,7 @@ async def test_llm():
         print("-" * 30)
         print("\nSending request to LLM...")
 
-        response = await call_llm(prompt_obj = BUDGET_ALERT_PROMPT, budget_data = "No Data, User hasn't overspent", temperature=0.8)
+        response = await call_llm(prompt_obj = BUDGET_ALERT_PROMPT, budget_data = json.dumps(sample_budget_data, indent=2), temperature=0.8)
 
         print(f"\nLLM Response:")
         print("=" * 40)

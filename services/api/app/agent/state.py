@@ -68,7 +68,7 @@ class DailyAlertOverspend(BaseModel):
     text: str = "No Reminders Today"
 
 class DailySuspiciousTransaction(BaseModel):
-    funny_quip: str
+    txn_type: str
     suspicious_transaction: TransactionRow
 
 class DailyAlertSuspiciousTransaction(BaseModel):

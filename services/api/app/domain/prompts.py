@@ -35,7 +35,7 @@ __BUDGET_ALERT_PROMPT = """
 Analyze this budget data and identify:
     1. Categories exceeding budget (remaining_amount will be negative)
     2. Categories exceeding budget with unplanned budget (planned_cash_flow_amount will be 0 and remaining_amount will be negative)
-    3. if no data is provided, that means the user hasn't overspend in any categories
+    3. if no data is provided, that means the user hasn't overspend in any categories, don't mention to the user there is no data, just aknowledge that there is no overspend
         
     Data: {budget_data}
 
@@ -48,4 +48,48 @@ Analyze this budget data and identify:
 BUDGET_ALERT_PROMPT = Prompt(
     name = "budget_alert",
     prompt =__BUDGET_ALERT_PROMPT
+)
+
+
+__SUSPICIOUS_TXN_PROMPT = """
+
+Review the transaction below and AND classify it as suspicious or not suspicious,are transaction that fall outside the spending policy guidelines, the guidelines are the following:
+
+- Small item purchases (e.g., under $15-#20), particulary in places like coffee shops, grocery stores , restaurants and gas stations.
+- Shopping in Amazon or online retailers
+
+respond only with valid JSON:
+{
+  "type": "suspicious" | "not_suspicious"
+}
+
+Transaction:
+{{transaction}}
+
+"""
+
+SUSPICIOUS_TXN_PROMPT = Prompt(     
+    name="suspicious_txn",
+    prompt=__SUSPICIOUS_TXN_PROMPT
+)
+
+
+__SUSPICIOUS_TXN_STORY_PROMPT = """
+
+Review this transactions and write a fictional funny story where characters Alicia, Mario or one of them go through thier day and despite nowing better,
+ they do these transactions. Make fun of them or the character represented in the story and create a witty funny conclusion on how they learn their lesson on not doing it again!
+
+Transactions:
+{{suspicious_transactions}}
+
+Keep the story under 250 words and after a story, list all the suspicious transactions in a bullet point list.
+
+
+
+
+"""
+
+SUSPICIOUS_TXN_STORY_PROMPT = Prompt(
+    name="suspicious_txn_story",
+    prompt=__SUSPICIOUS_TXN_STORY_PROMPT
 )

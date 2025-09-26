@@ -1,11 +1,14 @@
 from services.api.app.agent import state
 from services.api.pipelines.mongo_client import AsyncMongoDBClient
 
-from services.api.app.agent.state import BudgetAgentState, BudgetData, BudgetRow, OverspendBudgetData, TransactionRow, DailyAlertOverspend
+from services.api.app.agent.state import BudgetAgentState, BudgetData, BudgetRow, OverspendBudgetData, TransactionRow, DailyAlertOverspend, DailyAlertSuspiciousTransaction, DailySuspiciousTransaction
 from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm
 
-from services.api.app.domain.prompts import BUDGET_ALERT_PROMPT
-
+from services.api.app.domain.prompts import (
+    BUDGET_ALERT_PROMPT,
+    SUSPICIOUS_TXN_PROMPT,
+    SUSPICIOUS_TXN_STORY_PROMPT
+    )
 import logging
 from datetime import datetime,timedelta
 import json
@@ -126,7 +129,94 @@ async def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentStat
 
     state.daily_overspend_alert = DailyAlertOverspend(
         kind="daily_overspend_alert",
-        text=response_text
+        text= response_text
     )
 
     return state
+
+async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> BudgetAgentState:
+
+    """ 
+    - Input: last_day_txn from state
+    - Action1 : LLM looks at last_day_txn AND LOOPS THROUGH EACH LAST_DAY_TRANSACTION , LLM will evaluate if a txn is suspicious or not and adds to state daily_suspicious_transactions (a list)
+    - Action 2: Once action 1 is done, we call a second LLM  to write a fictional funny story based on all suspicious transactions
+
+    Output: Updates state daily_alert_suspicious_transaction instance (kind = "daily_suspicious_transaction_alert", text = "funny story")
+
+    - Updates process_flag.daily_suspicious_transaction_alert_done = True
+
+    """
+
+    last_day_txn = state.last_day_txn
+
+    if not last_day_txn:
+
+        state.daily_alert_suspicious_transaction =  DailyAlertSuspiciousTransaction(
+            kind="daily_suspicious_transaction_alert",
+            text="No Transactions to Review Today"
+        )
+        state.process_flag.daily_suspicious_transaction_alert_done = True
+        return state
+
+    suspicious_transactions = []
+
+    for txn_data in last_day_txn:
+
+        txn_model = TransactionRow.model_validate_json(txn_data)
+
+        response_text = await call_llm(
+            temperature= 0.9,
+            prompt_obj = SUSPICIOUS_TXN_PROMPT,
+            transaction= txn_data
+        )
+
+        try: 
+           response_dict = json.loads(response_text)
+           response_is_json = True
+
+        except:
+           response_is_json = False
+           logger.error(f"Failed to decode JSON from response: {response_text}")
+
+        if response_is_json: 
+            txn_type = response_dict.get("type", "not_suspicious")
+
+            suspicious_txn = DailySuspiciousTransaction(
+                txn_type= txn_type,
+                suspicious_transaction = txn_model
+            )
+
+
+            if suspicious_txn.txn_type == "suspicious":
+                suspicious_transactions.append(suspicious_txn)
+       
+        else:
+            logger.error(f"Skipping transaction due to invalid JSON response: {response_text}")
+
+    if not suspicious_transactions:
+        state.daily_alert_suspicious_transaction = DailyAlertSuspiciousTransaction(
+            kind="daily_suspicious_transaction_alert",
+            text="No 'Funny' Transactions Today"
+        )
+        state.process_flag.daily_suspicious_transaction_alert_done = True
+        return state
+
+    else:
+
+        suspicious_transactions_json = [json.loads(txn_data.model_dump_json()) for txn_data in suspicious_transactions]
+
+        suspicious_transactions_str = json.dumps(suspicious_transactions_json, indent=2)
+
+        response_story = await call_llm(
+            temperature=0.7,
+            prompt_obj = SUSPICIOUS_TXN_STORY_PROMPT,
+            transactions = suspicious_transactions_str
+            )
+        
+        state.daily_alert_suspicious_transaction = DailyAlertSuspiciousTransaction(
+            kind="daily_suspicious_transaction_alert",
+            text= response_story
+        )
+        state.process_flag.daily_suspicious_transaction_alert_done = True
+
+        return state
