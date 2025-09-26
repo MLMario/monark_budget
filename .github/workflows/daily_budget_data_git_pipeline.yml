@@ -36,6 +36,7 @@ jobs:
         pip install pandas>=2.0.0
         pip install pymongo>=4.9.2
         pip install pymongo[srv]
+        pip install motor>=3.7
         
         # Configuration and validation
         pip install pydantic>=2.10.6
