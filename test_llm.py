@@ -7,11 +7,13 @@ import os
 import asyncio
 import json
 
-# Add the services/api/app path to Python path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), 'services', 'api', 'app'))
 
-from agent.agent_utilities import call_llm
-from domain.prompts import BUDGET_ALERT_PROMPT
+# Add the services/api/app path to Python path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), 'services', 'api'))
+
+from app.agent.agent_utilities import call_llm, filter_overspent_categories
+from app.domain.prompts import BUDGET_ALERT_PROMPT
+from pipelines.mongo_client import AsyncMongoDBClient
 
 async def test_llm():
     """Test the call_llm function with BUDGET_ALERT_PROMPT"""
@@ -21,46 +23,28 @@ async def test_llm():
     
     try:
         # Sample budget data for testing
-        sample_budget_data = [
-            {
-                "category_name": "Groceries",
-                "category_group_name": "Food",
-                "remaining_amount": -150.00,
-                "planned_cash_flow_amount": 400.00,
-                "actual_amount": 550.00
-            },
-            {
-                "category_name": "Dining Out", 
-                "category_group_name": "Food",
-                "remaining_amount": -75.50,
-                "planned_cash_flow_amount": 200.00,
-                "actual_amount": 275.50
-            },
-            {
-                "category_name": "Emergency Fund",
-                "category_group_name": "Savings",
-                "remaining_amount": -300.00,
-                "planned_cash_flow_amount": 0.00,
-                "actual_amount": 300.00
-            }
-        ]
+        # Create MongoDB Client to Import Data
+        mongo_client = AsyncMongoDBClient() 
+
+        budget_json = await mongo_client.import_budget_data(filter_query={'category_group_type': 'expense'})
         
-        # Format the prompt with sample data
-        formatted_prompt = BUDGET_ALERT_PROMPT.prompt.format(
-            budget_data=json.dumps(sample_budget_data, indent=2)
-        )
+        overspent_json = filter_overspent_categories(budget_json)
         
+        for record in json.loads(overspent_json):
+            print(record.get('category_name'), record.get('remaining_amount'))
+
         print("Formatted Prompt:")
         print("-" * 30)
-        print(formatted_prompt[:500] + "..." if len(formatted_prompt) > 500 else formatted_prompt)
+        print(BUDGET_ALERT_PROMPT.prompt[:500] + "..." if len(BUDGET_ALERT_PROMPT.prompt) > 500 else BUDGET_ALERT_PROMPT.prompt)
         print("-" * 30)
         print("\nSending request to LLM...")
 
-        response = await call_llm(prompt_obj = BUDGET_ALERT_PROMPT, budget_data = json.dumps(sample_budget_data, indent=2), temperature=0.8)
+        response = await call_llm(prompt_obj = BUDGET_ALERT_PROMPT, budget_data = overspent_json, temperature=0.7,max_tokens=600)
 
         print(f"\nLLM Response:")
         print("=" * 40)
         print(response)
+
         print("=" * 40)
         print("\n✓ BUDGET_ALERT_PROMPT test: PASSED")
         
@@ -72,3 +56,4 @@ async def test_llm():
 
 if __name__ == "__main__":
     asyncio.run(test_llm())
+

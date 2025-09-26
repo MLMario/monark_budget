@@ -80,16 +80,7 @@ class ReportCategory(BaseModel):
     category_name: str
     category_group_name: str
     overspent_amount: float
-    drivers: Optional[str] = None
-    recommended_actions: Optional[str] = None
-
-class PeriodReport(BaseModel): 
-    period: str
-    categories_in_report: List[ReportCategory] = []
-    report_summary: Optional[str] = None
-    drivers: Optional[str] = None
-    recommended_actions: Optional[str] = None
-    report_funny_quip: Optional[str] = None
+    llm_response: Optional[str] = None
 
 class EmailInfo(BaseModel):
     to: str
@@ -108,8 +99,8 @@ class BudgetAgentState(BaseModel):
 # Agent imports data
     # imports from Mongo Db
     current_month_budget: Optional[str] = None
-    current_month_txn: List[TransactionRow] = []
-    previous_month_txn: List[TransactionRow] = []
+    current_month_txn: Optional[str] = None
+    previous_month_txn: Optional[str] = None
 
     last_day_txn: List[str] = [] #filter last day transactions adds them o a list last_day_txn
     overspend_budget_data: Optional[str] = None # cycles through each budget cateory, checks if its overspend, if so, it creates DailyOverspendCategory instance and adds to list OverspendBudgetData.overspend_categories
@@ -121,9 +112,7 @@ class BudgetAgentState(BaseModel):
 
     daily_alert_suspicious_transaction: DailyAlertSuspiciousTransaction
 
-    report_category: ReportCategory
-
-    period_report: PeriodReport
+    period_report: Optional[str] = None
 
     process_flag: ProcessFlag = Field(default_factory=ProcessFlag)
 

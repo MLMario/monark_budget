@@ -73,4 +73,8 @@ class Settings(BaseSettings):
         default = "llama-3.3-70b-instruct"
     )
 
+    GROQ_QWEN_REASONING: str = Field(
+        default = "qwen/qwen3-32b"
+    )
+
 Settings = Settings()
