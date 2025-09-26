@@ -9,10 +9,10 @@ from .nodes import (
     coordinator_node,
       daily_overspend_alert_node,
         daily_suspicious_transaction_alert_node, 
+        import_txn_data_for_period_report_node,
         period_report_node,
         wait_node,
-        policy_enforcer_node,
-        error_handler_node
+        email_node
 )
 from .agent_utilities import task_management
 from services.api.pipelines.mongo_client import MongoDBClient
@@ -75,8 +75,7 @@ def create_budget_graph() -> StateGraph:
     graph_builder.add_node('import_txn_data_for_period_report_node', import_txn_data_for_period_report_node)
     graph_builder.add_node("period_report_node", period_report_node)
     graph_builder.add_node("wait_node", wait_node)
-    graph_builder.add_node("policy_enforcer_node", policy_enforcer_node)
-    graph_builder.add_edge("error_handler_node", error_handler_node)
+    graph_builder.add_node("email_node", email_node)
 
     graph_builder.add_edge(START, "import_data_node")
     graph_builder.add_edge("import_data_node", "coordinator_node")
@@ -97,16 +96,22 @@ def create_budget_graph() -> StateGraph:
     graph_builder.add_edge("import_txn_data_for_period_report_node", "period_report_node")
     graph_builder.add_edge("period_report_node", "wait_node")
 
+    def wait_asses_function(state: BudgetAgentState):
+        process_state = wait_node(state)
+        if process_state=='wait':
+            return "wait"
+        else:
+            return "proceed"
+
     graph_builder.add_conditional_edges("wait_node",
                                         wait_asses_function,
                                          {
                                             "wait": "wait_node",
-                                            "proceed": "policy_enforcer_node"
+                                            "proceed": "email_node"
                                          }
                                          )
 
-    graph_builder.add_edge("policy_enforcer_node", END)
-
+    graph_builder.add_edge("email_node",END)
 
     return graph_builder
 

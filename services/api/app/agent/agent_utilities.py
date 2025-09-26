@@ -38,6 +38,7 @@ async def call_llm(
         max_tokens=4020,
         model = Settings.GROQ_LLAMA_VERSATILE,
         api_key = Settings.GROQ_API_KEY.get_secret_value(),
+        response_format = 'text',
         **kwargs):
 
     client = AsyncGroq(
@@ -60,7 +61,8 @@ async def call_llm(
         ],
         temperature=temperature,
 
-        max_tokens=max_tokens
+        max_tokens=max_tokens,
+        response_format=  {'type': response_format}
     )
     
     return completion.choices[0].message.content
@@ -73,7 +75,9 @@ async def call_llm_reasoning(
         max_tokens= 4020 ,
         model = Settings.GROQ_QWEN_REASONING,
         api_key = Settings.GROQ_API_KEY.get_secret_value(),
-        reasoning = 'high',
+        reasoning_effort = 'default',
+        reasoning_format = 'hidden',
+        response_format = 'text',
         **kwargs):
 
     client = AsyncGroq(
@@ -95,8 +99,11 @@ async def call_llm_reasoning(
             }
         ],
         temperature=temperature,
+        reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
+        reasoning_format=reasoning_format,
+        response_format=  {'type': response_format}
 
-        max_tokens=max_tokens
     )
     
     return completion.choices[0].message.content
@@ -132,8 +139,23 @@ def extract_json_text(cleaned_text: str):
     # find first {...} or [...] block
     m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", cleaned_text)
     if not m:
-        return cleaned_text, None
+        return cleaned_text
 
     json_text = m.group(1).strip()
 
     return json_text
+
+def required_process_flags(task_mode = "daily_tasks") -> tuple[str, ...]:
+
+    if task_mode == "daily_tasks":
+        return (
+            "daily_overspend_alert_done",
+            "daily_suspicious_transaction_alert_done",
+        )
+    if task_mode == "both_tasks":
+        return (
+            "daily_overspend_alert_done",
+            "daily_suspicious_transaction_alert_done",
+            "period_report_done",
+        )
+    return ()

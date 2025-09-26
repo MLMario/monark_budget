@@ -51,7 +51,7 @@ class TransactionRow(BaseModel):
     category_id: str
     category_name:str
     createdAt: str
-    description: str
+    description: Optional[str] = None
     merchant_id: str
     merchant_name: str
     transaction_id: str

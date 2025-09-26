@@ -5,17 +5,18 @@ from services.api.app.agent.state import (
     BudgetAgentState, BudgetData, BudgetRow,
       OverspendBudgetData, TransactionRow,
       DailyAlertOverspend, DailyAlertSuspiciousTransaction,
-      DailySuspiciousTransaction, ReportCategory
+      DailySuspiciousTransaction, ReportCategory, EmailInfo
 )
-from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm,call_llm_reasoning, task_management,clean_llm_output, extract_json_text
+from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm,call_llm_reasoning, task_management,clean_llm_output, extract_json_text,required_process_flags
 
 from services.api.app.domain.prompts import (
     BUDGET_ALERT_PROMPT,
     SUSPICIOUS_TXN_PROMPT,
     SUSPICIOUS_TXN_STORY_PROMPT,
     TXN_ANALYSIS_PROMPT,
-    PERIOD_REPORT_PROMPT
-    )
+    PERIOD_REPORT_PROMPT,
+    SYSTEM_PROMPT
+)
 import logging
 from datetime import datetime,timedelta
 from config import Settings
@@ -127,7 +128,7 @@ async def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentStat
         temperature=0.8,
         prompt_obj = BUDGET_ALERT_PROMPT,
         budget_data = overspend_budget_data,
-        max_tokens=600
+        max_tokens=800
     )
 
     state.daily_overspend_alert = DailyAlertOverspend(
@@ -159,16 +160,26 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
         txn_model = TransactionRow.model_validate_json(txn_data)
 
         response_text = await call_llm_reasoning(
+            system_prompt= SYSTEM_PROMPT.prompt + """ 
+            Respond only with JSON using this format:
+                    {
+                    "type": "positive|not_compliant"
+                    }
+            
+            """,
             temperature = 0.8,
             prompt_obj = SUSPICIOUS_TXN_PROMPT,
             transaction = txn_data,
             max_tokens=400,
             model = Settings.GROQ_QWEN_REASONING,
-            reasoning='low'
+            reasoning_format='hidden',
+            response_format='text'
         )
 
         clean_response = clean_llm_output(response_text) 
         json_text = extract_json_text(clean_response)
+
+
         try: 
            
            response_dict = json.loads(json_text)
@@ -181,7 +192,7 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
 
         if response_is_json: 
             
-            txn_type = response_dict.get("type", "not_suspicious")
+            txn_type = response_dict.get("type", "not_compliant")
 
             if txn_type == "not_compliant":
 
@@ -250,20 +261,32 @@ async  def import_txn_data_for_period_report_node(state: BudgetAgentState) -> Bu
     this_month_txn = await mongo_client.import_transaction_data(start_date=start_month_date, end_date=last_day_date)
     last_month_txn = await mongo_client.import_transaction_data(start_date=last_month_start_date, end_date=last_month_end_date)
 
+    if not this_month_txn:
+        raise ValueError("No transaction data found for the this month period.")
+
+    if not last_month_txn:
+        raise ValueError("No transaction data found for the last month period.")
+    
     # This month transactions
 
-    this_month_transactions_list_data = json.loads(this_month_txn)
-    pydantic_this_month_transactions_model = [TransactionRow(**txn) for txn in this_month_transactions_list_data]
-    this_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_this_month_transactions_model] # Keeping as a list since the LLM model should iterate through each transaction
-    state.current_month_txn = json.dumps(this_month_txn_dicts, indent=2)
+    if  this_month_txn:
+        this_month_transactions_list_data = json.loads(this_month_txn)
 
-    # last month transactions
-    last_month_transactions_list_data = json.loads(last_month_txn)
-    pydantic_last_month_transactions_model = [TransactionRow(**txn) for txn in last_month_transactions_list_data]
-    last_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_last_month_transactions_model] # Keeping as a list since the LLM model should iterate through each transaction
-    state.previous_month_txn = json.dumps(last_month_txn_dicts, indent=2)
+        pydantic_this_month_transactions_model = [TransactionRow(**txn) for txn in this_month_transactions_list_data]
+        this_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_this_month_transactions_model] # Keeping as a list since the LLM model should iterate through each transaction
+        state.current_month_txn = json.dumps(this_month_txn_dicts, indent=2)
+    else:
+        state.current_month_txn = "No Data, User hasn't done any transaction this month"
 
-    mongo_client.close()
+    if last_month_txn:
+        last_month_transactions_list_data = json.loads(last_month_txn)
+        pydantic_last_month_transactions_model = [TransactionRow(**txn) for txn in last_month_transactions_list_data]
+        last_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_last_month_transactions_model] # Keeping as a list since the LLM model should iterate through each transaction
+        state.previous_month_txn = json.dumps(last_month_txn_dicts, indent=2)
+    else:
+        state.previous_month_txn = "No Data, User hasn't done any transaction last month"
+   
+    mongo_client.close_connection()
     
     return state
 
@@ -279,53 +302,118 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
     
     """
 
-    over_spend_budget = json.loads(state.overspend_budget_data)
+    over_spend_budget = json.loads(state.overspend_budget_data).get("overspend_categories","")
     current_month_txn = json.loads(state.current_month_txn)
     previous_month_txn = json.loads(state.previous_month_txn)
 
     analysis_responses = []
 
-    for record in over_spend_budget:
-        category_name = record.get('category_name')
+    if over_spend_budget:
 
-        # Filter transactions for the current category
-        current_month_category_txn = [txn_record for txn_record in current_month_txn if txn_record.get('category_name') == category_name]
-        previous_month_category_txn = [txn_record for txn_record in previous_month_txn if txn_record.get('category_name') == category_name]
 
-        response_text = await call_llm(
-            temperature=0.7,
-            prompt_obj = TXN_ANALYSIS_PROMPT,
-            current_month_txn = json.dumps(current_month_category_txn, indent=2),
-            last_month_txn = json.dumps(previous_month_category_txn, indent=2),
-            max_tokens=600
+        for record in over_spend_budget:
+
+            print ("transaction record:", record)
+
+            category_name = record.get('category_name')
+
+            # Filter transactions for the current category
+            current_month_category_txn = [txn_record for txn_record in current_month_txn if txn_record.get('category_name') == category_name]
+            previous_month_category_txn = [txn_record for txn_record in previous_month_txn if txn_record.get('category_name') == category_name]
+
+            response_text = await call_llm_reasoning(
+                temperature = 0.8,
+                prompt_obj = TXN_ANALYSIS_PROMPT,
+                this_month_txn = json.dumps(current_month_category_txn, indent=2),
+                last_month_txn = json.dumps(previous_month_category_txn, indent=2),
+                max_tokens=600,
+                reasoning_effort='default',
+                reasoning_format='hidden'
+            )
+
+            response_text_cleaned = clean_llm_output(response_text)
+
+            #model validation and processing
+            response_dict = ReportCategory(
+                category_budget_variability=record.get("category_budget_variability"),
+                category_name=category_name,
+                category_group_name=record.get("category_group_name"),
+                overspent_amount=record.get("remaining_amount", 0) * -1,  # Convert to positive overspend amount
+                llm_response=response_text_cleaned
+            )
+
+            analysis_responses.append(response_dict)
+
+        periodo_report_data_input = json.dumps([json.loads(ReportCategory.model_dump_json(response)) for response in analysis_responses], indent=2)
+
+        print(periodo_report_data_input)
+
+
+        response_period_report = await call_llm_reasoning(
+            temperature = 0.8,
+            prompt_obj=PERIOD_REPORT_PROMPT,
+            max_tokens= 4020 ,
+            periodo_report_data_input = periodo_report_data_input,
+            reasoning_format = 'hidden'
+
         )
 
-        #model validation and processing
-        response_dict = ReportCategory(
-            category_budget_variability=record.get("category_budget_variability"),
-            category_name=category_name,
-            category_group_name=record.get("category_group_name"),
-            overspent_amount=record.get("remaining_amount", 0) * -1,  # Convert to positive overspend amount
-            llm_response=response_text
-        )
-
-        analysis_responses.append(response_dict)
-
-    periodo_report_data_input = json.dumps([json.loads(ReportCategory.model_dump_json(response)) for response in analysis_responses], indent=2)
-
-    response_period_report = await call_llm_reasoning(
-        temperature = 0.8,
-        prompt_obj=PERIOD_REPORT_PROMPT,
-        max_tokens= 4020 ,
-        reasoning = 'high',
-        periodo_report_data_input = periodo_report_data_input
-
-    )
-
-    state.period_report = response_period_report
+        state.period_report = response_period_report
+        state.process_flag.period_report_done = True
+    else:
+        state.period_report = "No Data, User hasn't overspent this month"
+        state.process_flag.period_report_done = True
 
     return state 
 
+
+
+def wait_node (state: BudgetAgentState) -> BudgetAgentState:
+
+    if state.task_info is None or state.task_info not in ["daily_tasks","both_tasks"]:
+        raise RuntimeError(f"Invalid task_info: {state.task_info}")
+    
+    if state.process_flag.daily_overspend_alert_done not in [True,False] or state.process_flag.daily_suspicious_transaction_alert_done not in [True,False] or state.process_flag.period_report_done not in [True,False]:
+        raise RuntimeError("Process flags must be boolean values.")
+    
+    if state.task_info == "daily_tasks":
+        
+        if state.process_flag.daily_overspend_alert_done and state.process_flag.daily_suspicious_transaction_alert_done:
+            return "proceed"
+        else:
+            return "wait"
+    elif state.task_info == "both_tasks":
+
+        if state.process_flag.daily_overspend_alert_done and state.process_flag.daily_suspicious_transaction_alert_done and state.process_flag.period_report_done:
+            return "proceed"
+        else:   
+            return "wait"   
+
+
+async def email_node(state: BudgetAgentState) -> BudgetAgentState:
+
+    email_body_parts = []
+
+    if state.process_flag.daily_overspend_alert_done and state.daily_overspend_alert:
+        email_body_parts.append(f"--- Daily Overspend Alert ---\n{state.daily_overspend_alert.text}\n")
+
+    if state.process_flag.daily_suspicious_transaction_alert_done and state.daily_alert_suspicious_transaction:
+        email_body_parts.append(f"--- Daily Suspicious Transaction Alert ---\n{state.daily_alert_suspicious_transaction.text}\n")
+
+    if state.process_flag.period_report_done and state.period_report:
+        email_body_parts.append(f"--- Period Report ---\n{state.period_report}\n")
+
+    email_body = "\n".join(email_body_parts) if email_body_parts else "No alerts or reports available."
+
+    email_info = EmailInfo(
+        to='mariogj1987@gmail.com',
+        subject="Your Budget Alerts and Reports From your Friendly Budget Assistant",
+        body=email_body
+    )
+
+    state.email_info = email_info
+
+    return state
 
         
 

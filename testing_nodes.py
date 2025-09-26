@@ -3,9 +3,11 @@
 This script mirrors the control flow from `agent_graph.py` and prints rich state
 information after each node executes so the full pipeline can be inspected
 manually. It intentionally relies on real MongoDB and Groq access, so ensure
-those credentials are configured before running it.
+those credentials are configured before running it. Pass ``--task`` to choose
+between the daily-only path or the combined daily + period flow.
 """
 
+import argparse
 import asyncio
 import json
 from datetime import date, datetime
@@ -22,10 +24,23 @@ from services.api.app.agent.nodes import (
     coordinator_node,
     daily_overspend_alert_node,
     daily_suspicious_transaction_alert_node,
+    get_pending_process_flags,
     import_data_node,
     import_txn_data_for_period_report_node,
     period_report_node,
+    wait_all_node,
 )
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the budget agent nodes end-to-end.")
+    parser.add_argument(
+        "--task",
+        choices=["daily_tasks", "both_tasks"],
+        default="daily_tasks",
+        help="Task routing to emulate after the coordinator node finishes.",
+    )
+    return parser.parse_args()
 
 
 def _print_section(title: str) -> None:
@@ -157,7 +172,43 @@ def _summarize_period_transactions(state: BudgetAgentState) -> None:
     _print_json_payload("Previous month transactions", state.previous_month_txn)
 
 
+async def _run_daily_pipeline(state: BudgetAgentState, *, section_title: str) -> BudgetAgentState:
+    state = await daily_overspend_alert_node(state)
+    _print_section(section_title + " - Daily overspend alert")
+    _print_key_value("Daily overspend alert", state.daily_overspend_alert.text)
+    _print_key_value("Overspend alert flag", state.process_flag.daily_overspend_alert_done)
+
+    state = await daily_suspicious_transaction_alert_node(state)
+    _print_section(section_title + " - Daily suspicious transaction alert")
+    _print_key_value(
+        "Suspicious transactions alert",
+        state.daily_alert_suspicious_transaction.text,
+    )
+    _print_key_value(
+        "Suspicious alert flag",
+        state.process_flag.daily_suspicious_transaction_alert_done,
+    )
+
+    return state
+
+
+async def _run_period_pipeline(state: BudgetAgentState, *, section_title: str) -> BudgetAgentState:
+    state = await import_txn_data_for_period_report_node(state)
+    _print_section(section_title + " - Period data import")
+    _summarize_period_transactions(state)
+
+    state = await period_report_node(state)
+    _print_section(section_title + " - Period report generation")
+    _print_json_payload("Period report output", state.period_report)
+    _print_key_value("Period report flag", state.process_flag.period_report_done)
+
+    return state
+
+
 async def main() -> None:
+    args = _parse_args()
+    requested_task = args.task
+
     _print_section("Initializing budget agent state")
     state = _build_initial_state()
     _print_json_payload("Initial state", state.model_dump())
@@ -170,37 +221,33 @@ async def main() -> None:
 
     _print_section("Step 2: Running coordinator_node")
     state = await coordinator_node(state)
-    _print_key_value("Task routing decision", state.task_info)
 
-    ran_period_tasks = False
-
-    _print_section("Step 3: Running daily task nodes")
-    state = await daily_overspend_alert_node(state)
-    _print_key_value("Daily overspend alert", state.daily_overspend_alert.text)
-    _print_key_value("Overspend alert flag", state.process_flag.daily_overspend_alert_done)
-
-    state = await daily_suspicious_transaction_alert_node(state)
+    original_task = state.task_info
+    state.task_info = requested_task
     _print_key_value(
-        "Suspicious transactions alert",
-        state.daily_alert_suspicious_transaction.text,
-    )
-    _print_key_value(
-        "Suspicious alert flag",
-        state.process_flag.daily_suspicious_transaction_alert_done,
+        "Task routing decision",
+        f"requested={requested_task} (coordinator suggested {original_task})",
     )
 
-    if state.task_info == "both_tasks":
-        ran_period_tasks = True
-        _print_section("Step 4: Running period task nodes")
-        state = await import_txn_data_for_period_report_node(state)
-        _summarize_period_transactions(state)
-
-        state = await period_report_node(state)
-        _print_json_payload("Period report output", state.period_report)
-        _print_key_value("Period report flag", state.process_flag.period_report_done)
+    if requested_task == "both_tasks":
+        _print_section("Step 3: Running daily and period tasks in parallel")
+        await asyncio.gather(
+            _run_daily_pipeline(state, section_title="Daily pipeline"),
+            _run_period_pipeline(state, section_title="Period pipeline"),
+        )
     else:
+        _print_section("Step 3: Running daily task pipeline")
+        await _run_daily_pipeline(state, section_title="Daily pipeline")
         _print_section("Step 4: Period tasks skipped")
-        _print_key_value("Reason", "Coordinator routed daily tasks only")
+        _print_key_value("Reason", "Daily-only task selection")
+
+    _print_section("Step 5: wait_all_node verification")
+    state = await wait_all_node(state)
+    pending = get_pending_process_flags(state)
+    if pending:
+        _print_key_value("Wait node status", f"Waiting on: {', '.join(pending)}")
+        return
+    _print_key_value("Wait node status", "All required tasks completed")
 
     _print_section("Workflow complete")
     _print_key_value("Task info", state.task_info)
@@ -209,7 +256,7 @@ async def main() -> None:
         "Suspicious transaction alert flag", state.process_flag.daily_suspicious_transaction_alert_done
     )
     _print_key_value("Period report flag", state.process_flag.period_report_done)
-    if ran_period_tasks:
+    if requested_task == "both_tasks" and state.process_flag.period_report_done:
         _print_json_payload("Final period report", state.period_report)
 
 

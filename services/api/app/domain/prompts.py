@@ -72,7 +72,7 @@ The saving guidelines are to avoid the following transactions:
 - Small item purchases (e.g., under $15-#20), particulary in places like coffee shops, grocery stores , restaurants and gas stations.
 - Shopping in Amazon or online retailers
 
-respond with a valid JSON format with one key "type" and value "not_compliant" or "compliant"
+respond with a valid JSON format
 
 Transaction:
 {transaction}
