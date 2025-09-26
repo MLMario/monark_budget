@@ -91,12 +91,6 @@ class PeriodReport(BaseModel):
     recommended_actions: Optional[str] = None
     report_funny_quip: Optional[str] = None
 
-class PeriodInfo(BaseModel):
-    is_end_of_period: bool = False
-    type: Literal[ "week", "month"]
-    start: date 
-    end: date
-
 class EmailInfo(BaseModel):
     to: str
     subject: str
@@ -120,8 +114,6 @@ class BudgetAgentState(BaseModel):
     last_day_txn: List[str] = [] #filter last day transactions adds them o a list last_day_txn
     overspend_budget_data: Optional[str] = None # cycles through each budget cateory, checks if its overspend, if so, it creates DailyOverspendCategory instance and adds to list OverspendBudgetData.overspend_categories
 
-    period_info: PeriodInfo #will need helper function to determine if its end of week or month
-
     daily_overspend_alert: DailyAlertOverspend
 
     daily_suspicious_transactions: list[DailySuspiciousTransaction] = []
@@ -137,8 +129,7 @@ class BudgetAgentState(BaseModel):
 
     email_info: Optional[EmailInfo] = None
 
-
-
+    task_info: str = 'daily_tasks'
 
 
 

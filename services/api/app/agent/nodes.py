@@ -2,7 +2,7 @@ from services.api.app.agent import state
 from services.api.pipelines.mongo_client import AsyncMongoDBClient
 
 from services.api.app.agent.state import BudgetAgentState, BudgetData, BudgetRow, OverspendBudgetData, TransactionRow, DailyAlertOverspend, DailyAlertSuspiciousTransaction, DailySuspiciousTransaction
-from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm
+from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm, task_management
 
 from services.api.app.domain.prompts import (
     BUDGET_ALERT_PROMPT,
@@ -106,6 +106,9 @@ async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
 #it just so that it re-route tasks depending on the day
 async def coordinator_node(state: BudgetAgentState) -> BudgetAgentState:
 
+
+    state.task_info = task_management()
+
     return state
 
 async def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentState:
@@ -131,6 +134,8 @@ async def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentStat
         kind="daily_overspend_alert",
         text= response_text
     )
+
+    state.process_flag.daily_overspend_alert_done = True
 
     return state
 

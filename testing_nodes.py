@@ -27,7 +27,6 @@ from agent.state import (  # type: ignore[import-not-found]
     TransactionRow,
     OverspendBudgetData,
     ProcessFlag,
-    PeriodInfo,
     DailyAlertSuspiciousTransaction,
     DailyAlertOverspend,
     ReportCategory,
@@ -63,15 +62,18 @@ async def test_import_data_node():
         state = BudgetAgentState(
             run_meta=run_meta,
             overspend_budget_data=None,
-            period_info=PeriodInfo(
-                type="month",
-                start=today.replace(day=1),
-                end=(today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            daily_overspend_alert=DailyAlertOverspend(),
+            daily_suspicious_transactions=[],
+            daily_alert_suspicious_transaction=DailyAlertSuspiciousTransaction(),
+            report_category=ReportCategory(
+                category_name="test",
+                category_group_name="test",
+                overspent_amount=0.0,
             ),
-            daily_overspend_alert={"kind": "daily_overspend_alert", "text": "No Reminders Today"},
-            daily_alert_suspicious_transaction={"kind": "daily_suspicious_transaction_alert", "text": "No Suspicious Transactions Today"},
-            report_category={"category_name": "test", "category_group_name": "test", "overspent_amount": 0.0},
-            period_report={"period": "test", "categories_in_report": []}
+            period_report=PeriodReport(period="test", categories_in_report=[]),
+            process_flag=ProcessFlag(),
+            email_info=None,
+            task_info="daily_tasks",
         )
         print("✓ BudgetAgentState model validation: PASSED")
         print(f"  - Run ID: {state.run_meta.run_id}")
@@ -153,7 +155,7 @@ async def test_import_data_node():
         checks = [
             ("run_meta", updated_state.run_meta is not None),
             ("overspend_budget_data", updated_state.overspend_budget_data is not None),
-            ("period_info", updated_state.period_info is not None),
+            ("task_info", updated_state.task_info in {"daily_tasks", "both_tasks"}),
             ("process_flag", updated_state.process_flag is not None),
         ]
         
@@ -251,70 +253,78 @@ def test_filter_overspent_categories():
         print(f"  Error: {e}")
         return False
 
-def test_coordinator_node():
-    """Test the coordinator_node task management functionality"""
-    
+async def test_coordinator_node():
+    """Test the coordinator_node updates task_info based on task_management."""
+
     print("=" * 60)
     print("TESTING COORDINATOR NODE FUNCTIONALITY")
     print("=" * 60)
-    
-    def task_management_logic(test_date):
-        """Local implementation of task management logic"""
-        is_monday = test_date.weekday() == 0
-        yesterday = test_date - timedelta(days=1)
-        is_first_day = test_date.month != yesterday.month
-        return "both_tasks" if (is_monday or is_first_day) else "daily_tasks"
-    
+
+    today = datetime.now().date()
+    original_task_management = agent_nodes.task_management
+
+    scenarios = [
+        ("Daily tasks path", "daily_tasks"),
+        ("Both tasks path", "both_tasks"),
+    ]
+
+    all_passed = True
+
     try:
-        # Test current day first
-        today = datetime.now()
-        actual_result = task_management_logic(today)
-        is_monday = today.weekday() == 0
-        yesterday = today - timedelta(days=1)
-        is_first_day = today.month != yesterday.month
-        
-        expected_today = "both_tasks" if (is_monday or is_first_day) else "daily_tasks"
-        
-        print(f"Today is {today.strftime('%A, %B %d, %Y')}")
-        print(f"Is Monday: {is_monday}, Is 1st of month: {is_first_day}")
-        print(f"Expected: {expected_today}, Actual: {actual_result}")
-        
-        all_passed = True
-        if actual_result == expected_today:
-            print("✓ Current day test: PASSED")
-        else:
-            print("✗ Current day test: FAILED")
-            all_passed = False
-            
-        # Test logic with specific examples
-        test_dates = [
-            (datetime(2025, 3, 3), "both_tasks", "Monday (March 3)"),  # Monday
-            (datetime(2025, 3, 4), "daily_tasks", "Tuesday (March 4)"),  # Tuesday
-            (datetime(2025, 4, 1), "both_tasks", "Tuesday, 1st of April"),  # 1st of month
-            (datetime(2025, 2, 1), "both_tasks", "Saturday, 1st of February"),  # 1st + weekend
-            (datetime(2025, 6, 15), "daily_tasks", "Sunday mid-month"),  # Regular Sunday
-        ]
-        
-        for test_date, expected, description in test_dates:
-            result = task_management_logic(test_date)
-            
-            if result == expected:
-                print(f"✓ {description}: {result}")
+        for description, return_value in scenarios:
+            agent_nodes.task_management = lambda rv=return_value: rv
+
+            state = BudgetAgentState(
+                run_meta=RunMeta(
+                    run_id=f"coordinator_test_{return_value}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    today=today,
+                    tz="UTC",
+                ),
+                current_month_budget=None,
+                current_month_txn=[],
+                previous_month_txn=[],
+                last_day_txn=[],
+                overspend_budget_data=None,
+                daily_overspend_alert=DailyAlertOverspend(),
+                daily_suspicious_transactions=[],
+                daily_alert_suspicious_transaction=DailyAlertSuspiciousTransaction(),
+                report_category=ReportCategory(
+                    category_name="test",
+                    category_group_name="test",
+                    overspent_amount=0.0,
+                ),
+                period_report=PeriodReport(period="test", categories_in_report=[]),
+                process_flag=ProcessFlag(),
+                email_info=None,
+                task_info="initial_state",
+            )
+
+            updated_state = await coordinator_node(state)
+            passed = updated_state.task_info == return_value
+
+            if passed:
+                print(f"✓ {description}: task_info updated to '{return_value}'")
             else:
-                print(f"✗ {description}: Expected {expected}, got {result}")
-                all_passed = False
-        
-        if all_passed:
-            print(f"\n✓ coordinator_node logic: ALL TESTS PASSED")
-            return True
-        else:
-            print(f"\n✗ coordinator_node logic: SOME TESTS FAILED")
-            return False
-            
+                print(
+                    f"✗ {description}: expected task_info '{return_value}' but found '{updated_state.task_info}'"
+                )
+
+            all_passed = all_passed and passed
+
     except Exception as e:
         print(f"\n✗ coordinator_node: FAILED")
         print(f"  Error: {e}")
-        return False
+        all_passed = False
+
+    finally:
+        agent_nodes.task_management = original_task_management
+
+    if all_passed:
+        print("\n✓ coordinator_node task routing: ALL TESTS PASSED")
+    else:
+        print("\n✗ coordinator_node task routing: SOME TESTS FAILED")
+
+    return all_passed
 
 
 async def test_daily_suspicious_transaction_alert_node():
@@ -325,8 +335,6 @@ async def test_daily_suspicious_transaction_alert_node():
     print("=" * 60)
 
     today = date.today()
-    period_start = today.replace(day=1)
-    period_end = (period_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
     def build_base_state(last_day_txn_json: list[str]) -> BudgetAgentState:
         return BudgetAgentState(
@@ -340,7 +348,6 @@ async def test_daily_suspicious_transaction_alert_node():
             previous_month_txn=[],
             last_day_txn=last_day_txn_json,
             overspend_budget_data=None,
-            period_info=PeriodInfo(type="month", start=period_start, end=period_end),
             daily_overspend_alert=DailyAlertOverspend(),
             daily_suspicious_transactions=[],
             daily_alert_suspicious_transaction=DailyAlertSuspiciousTransaction(),
@@ -352,6 +359,7 @@ async def test_daily_suspicious_transaction_alert_node():
             period_report=PeriodReport(period="test", categories_in_report=[]),
             process_flag=ProcessFlag(),
             email_info=None,
+            task_info="daily_tasks",
         )
 
     async def fake_call_llm(*args, **kwargs):
@@ -457,7 +465,7 @@ async def main():
     filter_test_passed = test_filter_overspent_categories()
     
     # Test the coordinator node
-    coordinator_test_passed = test_coordinator_node()
+    coordinator_test_passed = await test_coordinator_node()
     
     # Test the main import function
     import_test_passed = await test_import_data_node()
