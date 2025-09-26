@@ -11,7 +11,7 @@ from .mongo_client import MongoDBClient
 class DataImportPipeline:
     
     def __init__(self):
-        self.pw = Settings.MONARK_PW
+        self.pw = Settings.MONARK_PW.get_secret_value()
         self.user = Settings.MONARK_USER
         self.budget_data = None
         self.transaction_data = None

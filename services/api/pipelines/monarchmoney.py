@@ -68,7 +68,7 @@ class MonarchMoney(object):
             "Client-Platform": "web",
             "Content-Type": "application/json",
             "User-Agent": "MonarchMoneyAPI (https://github.com/hammem/monarchmoney)",
-            'Device-UUID' : Settings.MONARK_DD_ID
+            'Device-UUID' : Settings.MONARK_DD_ID.get_secret_value()
         }
         if token:
             self._headers["Authorization"] = f"Token {token}"
