@@ -1,5 +1,7 @@
 from services.api.app.agent import state
 from services.api.pipelines.mongo_client import AsyncMongoDBClient
+from .agent_utilities import SendEmail
+from services.api.app.domain.prompts import Prompt
 
 from services.api.app.agent.state import (
     BudgetAgentState, BudgetData, BudgetRow,
@@ -7,7 +9,7 @@ from services.api.app.agent.state import (
       DailyAlertOverspend, DailyAlertSuspiciousTransaction,
       DailySuspiciousTransaction, ReportCategory, EmailInfo
 )
-from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm,call_llm_reasoning, task_management,clean_llm_output, extract_json_text,required_process_flags
+from services.api.app.agent.agent_utilities import filter_overspent_categories, call_llm,call_llm_reasoning, task_management,clean_llm_output, extract_json_text, validate_html
 
 from services.api.app.domain.prompts import (
     BUDGET_ALERT_PROMPT,
@@ -15,7 +17,8 @@ from services.api.app.domain.prompts import (
     SUSPICIOUS_TXN_STORY_PROMPT,
     TXN_ANALYSIS_PROMPT,
     PERIOD_REPORT_PROMPT,
-    SYSTEM_PROMPT
+    SYSTEM_PROMPT,
+    HTNML_AGENT_PROMPT
 )
 import logging
 from datetime import datetime,timedelta
@@ -128,7 +131,7 @@ async def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentStat
         temperature=0.8,
         prompt_obj = BUDGET_ALERT_PROMPT,
         budget_data = overspend_budget_data,
-        max_tokens=800
+        max_tokens=700
     )
 
     state.daily_overspend_alert = DailyAlertOverspend(
@@ -151,6 +154,7 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
             text="No Transactions to Review Today"
         )
         state.process_flag.daily_suspicious_transaction_alert_done = True
+
         return state
 
     suspicious_transactions = []
@@ -171,9 +175,10 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
             prompt_obj = SUSPICIOUS_TXN_PROMPT,
             transaction = txn_data,
             max_tokens=400,
-            model = Settings.GROQ_QWEN_REASONING,
+            model = Settings.GROQ_OPENAI_20B_MODE,
             reasoning_format='hidden',
-            response_format='text'
+            response_format='text',
+            reasoning_effort = 'medium'
         )
 
         clean_response = clean_llm_output(response_text) 
@@ -223,6 +228,7 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
         suspicious_transactions_str = json.dumps(suspicious_transactions_json, indent=2)
 
         response_story = await call_llm(
+            model=Settings.GROQ_LLAMA_VERSATILE,
             temperature = 0.7,
             prompt_obj = SUSPICIOUS_TXN_STORY_PROMPT,
             suspicious_transactions = suspicious_transactions_str
@@ -237,7 +243,7 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
         return state
     
 
-async  def import_txn_data_for_period_report_node(state: BudgetAgentState) -> BudgetAgentState:
+async def import_txn_data_for_period_report_node(state: BudgetAgentState) -> BudgetAgentState:
 
     
     mongo_client = AsyncMongoDBClient() 
@@ -301,16 +307,29 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
     - Updates process_flag.period_report_done = True
     
     """
+    if state.overspend_budget_data != "No Data, User hasn't overspent":
+        over_spend_budget = json.loads(state.overspend_budget_data).get("overspend_categories","")
+    else:
+        over_spend_budget = state.overspend_budget_data
 
-    over_spend_budget = json.loads(state.overspend_budget_data).get("overspend_categories","")
-    current_month_txn = json.loads(state.current_month_txn)
-    previous_month_txn = json.loads(state.previous_month_txn)
+
 
     analysis_responses = []
 
-    if over_spend_budget:
+    if over_spend_budget != "No Data, User hasn't overspent":
 
+        over_spend_budget = json.loads(state.overspend_budget_data).get("overspend_categories","")
 
+        if state.current_month_txn != "No Data, User hasn't done any transaction this month":
+            current_month_txn = json.loads(state.current_month_txn)
+        else: 
+            current_month_txn = state.current_month_txn
+
+        if state.previous_month_txn != "No Data, User hasn't done any transaction last month":
+            previous_month_txn = json.loads(state.previous_month_txn)
+        else:
+            previous_month_txn = state.previous_month_txn
+        
         for record in over_spend_budget:
 
             print ("transaction record:", record)
@@ -348,7 +367,6 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
 
         print(periodo_report_data_input)
 
-
         response_period_report = await call_llm_reasoning(
             temperature = 0.8,
             prompt_obj=PERIOD_REPORT_PROMPT,
@@ -360,34 +378,13 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
 
         state.period_report = response_period_report
         state.process_flag.period_report_done = True
+
     else:
-        state.period_report = "No Data, User hasn't overspent this month"
+        state.period_report = "Good Job! You haven't overspent in any category this period, keep it up!"
+
         state.process_flag.period_report_done = True
 
     return state 
-
-
-
-def wait_node (state: BudgetAgentState) -> BudgetAgentState:
-
-    if state.task_info is None or state.task_info not in ["daily_tasks","both_tasks"]:
-        raise RuntimeError(f"Invalid task_info: {state.task_info}")
-    
-    if state.process_flag.daily_overspend_alert_done not in [True,False] or state.process_flag.daily_suspicious_transaction_alert_done not in [True,False] or state.process_flag.period_report_done not in [True,False]:
-        raise RuntimeError("Process flags must be boolean values.")
-    
-    if state.task_info == "daily_tasks":
-        
-        if state.process_flag.daily_overspend_alert_done and state.process_flag.daily_suspicious_transaction_alert_done:
-            return "proceed"
-        else:
-            return "wait"
-    elif state.task_info == "both_tasks":
-
-        if state.process_flag.daily_overspend_alert_done and state.process_flag.daily_suspicious_transaction_alert_done and state.process_flag.period_report_done:
-            return "proceed"
-        else:   
-            return "wait"   
 
 
 async def email_node(state: BudgetAgentState) -> BudgetAgentState:
@@ -405,11 +402,36 @@ async def email_node(state: BudgetAgentState) -> BudgetAgentState:
 
     email_body = "\n".join(email_body_parts) if email_body_parts else "No alerts or reports available."
 
+    EMAIL_BODY_PROMPT = Prompt(
+        name="email_body_prompt",
+        prompt=email_body
+        )
+
+    response_text = await call_llm_reasoning(
+            temperature=0.8,
+            system_prompt = HTNML_AGENT_PROMPT.prompt,
+            prompt_obj=EMAIL_BODY_PROMPT,
+            max_tokens= 6020 ,
+            model = Settings.GROQ_OPENAI_20B_MODE,
+            reasoning_effort = 'medium',
+            reasoning_format = 'hidden',
+                )
+
+    response_html, is_html = validate_html(response_text)
+
+    if not is_html:
+        logger.error("Generated email content is not valid HTML.")
+
+
     email_info = EmailInfo(
-        to='mariogj1987@gmail.com',
+        to='mariogj1987@gmail.com, aliciaayanez@gmail.com',
         subject="Your Budget Alerts and Reports From your Friendly Budget Assistant",
-        body=email_body
+        body=response_html,
+        from_= Settings.SMTP_USER
     )
+
+    send_email = SendEmail(email_info)
+    await send_email.send_email_async(is_html=is_html)
 
     state.email_info = email_info
 

@@ -77,4 +77,20 @@ class Settings(BaseSettings):
         default = "qwen/qwen3-32b"
     )
 
+    GROQ_OPENAI_20B_MODE: str = Field(  
+        default = "openai/gpt-oss-20b"
+    )
+
+    SMTP_USER: str = Field( 
+        description = "SMTP user for sending emails",
+        env = "SMTP_USER"
+    )
+
+    SMTP_PASSWORD: SecretStr = Field(
+        description = "SMTP password for sending emails",
+        env = "SMTP_PASSWORD"
+    )
+
+
+
 Settings = Settings()

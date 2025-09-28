@@ -11,7 +11,6 @@ from .nodes import (
         daily_suspicious_transaction_alert_node, 
         import_txn_data_for_period_report_node,
         period_report_node,
-        wait_node,
         email_node
 )
 from .agent_utilities import task_management
@@ -67,50 +66,30 @@ def create_budget_graph() -> StateGraph:
     
     """
 
-
     graph_builder.add_node("import_data_node", import_data_node)
-    graph_builder.add_node("coordinator_node", coordinator_node)
+
     graph_builder.add_node("daily_overspend_alert_node", daily_overspend_alert_node)
     graph_builder.add_node("daily_suspicious_transaction_alert_node", daily_suspicious_transaction_alert_node)
+    graph_builder.add_node("coordinator_node", coordinator_node)
     graph_builder.add_node('import_txn_data_for_period_report_node', import_txn_data_for_period_report_node)
     graph_builder.add_node("period_report_node", period_report_node)
-    graph_builder.add_node("wait_node", wait_node)
+
     graph_builder.add_node("email_node", email_node)
 
     graph_builder.add_edge(START, "import_data_node")
-    graph_builder.add_edge("import_data_node", "coordinator_node")
-
-    graph_builder.add_conditional_edges(
-        "coordinator_node",
-        task_management,
-        {
-            "daily_tasks": "daily_overspend_alert_node",
-            "both_tasks": ["daily_overspend_alert_node", "import_txn_data_for_period_report_node"]
-        }
-
-    )
-
+    graph_builder.add_edge("import_data_node", "daily_overspend_alert_node")
     graph_builder.add_edge("daily_overspend_alert_node","daily_suspicious_transaction_alert_node")
-    graph_builder.add_edge("daily_suspicious_transaction_alert_node","wait_node")
+    graph_builder.add_edge("daily_suspicious_transaction_alert_node","coordinator_node")
 
-    graph_builder.add_edge("import_txn_data_for_period_report_node", "period_report_node")
-    graph_builder.add_edge("period_report_node", "wait_node")
-
-    def wait_asses_function(state: BudgetAgentState):
-        process_state = wait_node(state)
-        if process_state=='wait':
-            return "wait"
-        else:
-            return "proceed"
-
-    graph_builder.add_conditional_edges("wait_node",
-                                        wait_asses_function,
+    graph_builder.add_conditional_edges("coordinator_node",
+                                        task_management,
                                          {
-                                            "wait": "wait_node",
-                                            "proceed": "email_node"
+                                            "both_tasks": "import_txn_data_for_period_report_node",
+                                            "daily_tasks": "email_node"
                                          }
                                          )
-
+    graph_builder.add_edge("import_txn_data_for_period_report_node", "period_report_node")
+    graph_builder.add_edge("period_report_node", "email_node")
     graph_builder.add_edge("email_node",END)
 
     return graph_builder

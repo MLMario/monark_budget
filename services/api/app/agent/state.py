@@ -86,6 +86,7 @@ class EmailInfo(BaseModel):
     to: str
     subject: str
     body: str
+    from_: str
 
 class ProcessFlag(BaseModel):
     daily_overspend_alert_done: bool = False
@@ -117,6 +118,7 @@ class BudgetAgentState(BaseModel):
     process_flag: ProcessFlag = Field(default_factory=ProcessFlag)
 
     email_info: Optional[EmailInfo] = None
+
 
     task_info: str = 'daily_tasks'
 

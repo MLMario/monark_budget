@@ -1,9 +1,15 @@
 import json
-from datetime import datetime,timedelta
+import re
+import smtplib
+from datetime import datetime, timedelta
+from email.message import EmailMessage
+from html.parser import HTMLParser
+
 from groq import AsyncGroq
+
 from config import Settings
 from services.api.app.domain.prompts import SYSTEM_PROMPT
-import re
+
 
 def filter_overspent_categories(budget_json: str) -> str:
 
@@ -20,7 +26,7 @@ def filter_overspent_categories(budget_json: str) -> str:
     # Return as JSON string
     return json.dumps(filtered_data, default=str)
 
-def task_management():
+def task_management(_state=None):
 
     today = datetime.now()
     is_monday = today.weekday() == 0  # Monday is 0 and Sunday is 6
@@ -145,17 +151,72 @@ def extract_json_text(cleaned_text: str):
 
     return json_text
 
-def required_process_flags(task_mode = "daily_tasks") -> tuple[str, ...]:
 
-    if task_mode == "daily_tasks":
-        return (
-            "daily_overspend_alert_done",
-            "daily_suspicious_transaction_alert_done",
-        )
-    if task_mode == "both_tasks":
-        return (
-            "daily_overspend_alert_done",
-            "daily_suspicious_transaction_alert_done",
-            "period_report_done",
-        )
-    return ()
+
+class SendEmail:
+
+    def __init__(self,EmailINfo):
+        self.from_ = EmailINfo.from_
+        self.to = EmailINfo.to
+        self.subject = EmailINfo.subject
+        self.body = EmailINfo.body
+        self.ADDRESS = Settings.SMTP_USER
+        self.PASSWORD = Settings.SMTP_PASSWORD.get_secret_value()
+    
+    async def send_email_async(self, is_html=False):
+
+        msg = EmailMessage()
+        msg['Subject'] = self.subject
+        msg['From'] = self.from_ 
+        msg['To'] = self.to
+
+        if not is_html:
+            msg.set_content(self.body)
+        else:
+            msg.add_alternative(self.body, subtype="html")
+
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.ehlo()
+            server.starttls()  # upgrade the connection to TLS
+            server.ehlo()
+
+            server.login(self.ADDRESS, self.PASSWORD)
+            server.send_message(msg)
+
+import re
+
+class HTMLValidator(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.valid_html = True
+        self.error_msg = ""
+    
+    def error(self, message):
+        self.valid_html = False
+        self.error_msg = message
+
+def validate_html(text: str) -> str:
+    """
+    Check if the input text is valid HTML. If valid, return as-is.
+    If invalid or plain text, return the original string.
+    """
+    if not text or not text.strip():
+        return text, False
+    
+    # Quick check: if it doesn't contain HTML tags, return as-is
+    if not re.search(r'<[^>]+>', text):
+        return text, False
+    
+    validator = HTMLValidator()
+    try:
+        validator.feed(text)
+        validator.close()
+        # If we get here without exceptions and valid_html is True, it's valid HTML
+        if validator.valid_html:
+            return text, True
+        else:
+            
+            return text, False
+    except Exception as exc:
+        
+        return text, False

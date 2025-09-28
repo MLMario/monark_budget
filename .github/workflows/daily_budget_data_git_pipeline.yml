@@ -75,3 +75,10 @@ jobs:
     - name: Delete pickle file
       run: |
         rm -f .mm/mm_session.pickle
+    
+    - name: Wait 2 minutes
+      run: sleep 120
+    
+    - name: Start Agent Pipeline
+      run: |
+        python -m main()
