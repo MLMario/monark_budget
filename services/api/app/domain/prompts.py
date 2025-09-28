@@ -41,10 +41,13 @@ __HTML_AGENT_PROMPT = """
 
     Keep the email sections intact and the flow exactly the same, but make changes so that:
     - It has clear section separations
-    - add emojis where you think it would be funny to do so, but don't over do it
-    - transform bullet points list of expenses into tables that are easier to read
+    - Daily Overspend section has an alarm emoji 🚨 at the start of the section
+    - Suspicious Transactions section has a detective emoji 🕵️‍♂️ at the start of the section
+    - Period Report section has a thinking emoji 🤔 at the start of the section
+    - In the texts within sections, add emojis where you think it would be funny to do so, but don't over do it
+    - transform bullet points list of expenses into tables that are easier to read, table headers should always be orange color
 
-    Respond  ONLY with the HTML code, always.
+    Respond ONLY with the HTML code, always. There should be no string before or after the HTML code.
 
 """
 

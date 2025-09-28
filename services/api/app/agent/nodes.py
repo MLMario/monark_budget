@@ -431,6 +431,7 @@ async def email_node(state: BudgetAgentState) -> BudgetAgentState:
     )
 
     send_email = SendEmail(email_info)
+    
     await send_email.send_email_async(is_html=is_html)
 
     state.email_info = email_info
