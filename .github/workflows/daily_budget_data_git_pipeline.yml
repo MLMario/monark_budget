@@ -81,4 +81,4 @@ jobs:
     
     - name: Start Agent Pipeline
       run: |
-        python -m main()
+        python -m main
