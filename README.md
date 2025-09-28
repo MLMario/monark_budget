@@ -27,25 +27,79 @@ When it's time for deeper analysis, our agent compares current and previous mont
 
 Our first challenge? Monarch Money doesn't offer a public API, but it's where all our financial data lives. We needed to become digital detectives.
 
-The solution lives in [`services/api/pipelines/monarchmoney.py`](services/api/pipelines/monarchmoney.py), where we updated monarymoney python package to be able to:
-- Handles authentication with device IDs and credentials to sidestep current Email OTP (monarymoney cannot handle this)
-- Manages session persistence using pickle files
-- Executes GraphQL queries to extract budget and transaction data
-- Gracefully handles rate limiting and session expiration
+The solution lives in [`services/api/pipelines/monarchmoney.py`](services/api/pipelines/monarchmoney.py). This package updates an already existing package ([monarchmoney](https://github.com/hammem/monarchmoney)) that can handle login, session management and GraphQL queries. Sadly this package is outdated, it needed updates to use the newest version of GraphQL and a method to bypass a new Email OTP identification step that Monarch Money has implemented for devices it doesn't recognize.
+
+**Authentication & Session Management:**
+The MonarchMoney class initializes with custom headers including a critical `Device-UUID` to bypass device recognition:
 
 ```python
-# The core data extraction happens through GraphQL queries
-async def get_budgets(self) -> str:
-    query = """
-    query GetBudgetData($filters: BudgetSummaryFilters!) {
-        budgetSummary(filters: $filters) {
-            # ... detailed budget fields
-        }
+def __init__(self, session_file: str = SESSION_FILE, timeout: int = 10, token: Optional[str] = None):
+    self._headers = {
+        "Accept": "application/json",
+        "Client-Platform": "web", 
+        "Content-Type": "application/json",
+        "User-Agent": "MonarchMoneyAPI (https://github.com/hammem/monarchmoney)",
+        'Device-UUID': Settings.MONARK_DD_ID.get_secret_value()  # Critical for bypassing OTP
     }
-    """
+    if token:
+        self._headers["Authorization"] = f"Token {token}"
 ```
 
-This isn't web scraping—it's reverse-engineering their internal API to create a reliable data pipeline.
+**Login Flow:**
+The login process handles session persistence and token validation:
+
+```python
+async def login(self, email: str = None, password: str = None, use_saved_session: bool = True):
+    if use_saved_session and os.path.exists(self._session_file):
+        self.load_session(self._session_file)
+        if await self._validate_token():
+            return  # Use existing session
+    
+    await self._login_user(email, password, mfa_secret_key)
+    if save_session:
+        self.save_session(self._session_file)  # Pickle session for reuse
+```
+
+**GraphQL Client Setup:**
+All data extraction happens through a properly configured GraphQL client that includes our authentication headers:
+
+```python
+def _get_graphql_client(self) -> Client:
+    if not self._token and "Authorization" not in self._headers:
+        raise LoginFailedException("Make sure you call login() first!")
+    
+    transport = AIOHTTPTransport(
+        url=MonarchMoneyEndpoints.getGraphQL(),
+        headers=self._headers,  # Includes Device-UUID and Authorization
+        timeout=self._timeout,
+    )
+    return Client(transport=transport, fetch_schema_from_transport=False)
+
+async def gql_call(self, operation: str, graphql_query: DocumentNode, variables: Dict = {}):
+    req = GraphQLRequest(graphql_query, operation_name=operation, variable_values=variables)
+    async with self._get_graphql_client() as session:
+        return await session.execute(req)
+```
+
+**Data Extraction Queries:**
+The core budget data extraction leverages Monarch's internal GraphQL schema:
+
+```python
+async def get_budgets(self) -> str:
+    query = gql("""
+        query GetBudgetData($filters: BudgetSummaryFilters!) {
+            budgetSummary(filters: $filters) {
+                categoryGroups {
+                    categories {
+                        id name actualAmount plannedAmount remainingAmount
+                        # ... detailed budget fields
+                    }
+                }
+            }
+        }
+    """)
+    return await self.gql_call("GetBudgetData", query, variables)
+```
 
 ### Chapter 2: Embracing the MongoDB Life
 
@@ -135,13 +189,6 @@ async def call_llm_reasoning(
     )
 ```
 
-**The Node Logic:**
-Each node in [`services/api/app/agent/nodes.py`](services/api/app/agent/nodes.py) handles specific intelligence tasks:
-- **Daily overspend alerts** analyze budget vs. actual spending
-- **Suspicious transaction detection** applies our personal savings rules
-- **Period reports** perform month-over-month transaction analysis
-- **Email generation** creates HTML-formatted insights with personality
-
 ### Chapter 5: Orchestrating Everything with Main
 
 The final piece was [`main.py`](main.py)—a clean entry point that brings everything together:
@@ -177,3 +224,31 @@ The crown jewel is our [`.github/workflows/daily_budget_data_git_pipeline.yml`](
 Every day, we wake up to emails that don't just tell us we overspent—they tell us *why* we overspent, *what patterns* led to it, and *how we can do better*. Our agent has become like having a witty financial advisor who knows our habits, celebrates our wins, and gently roasts us for our Amazon addiction.
 
 This isn't just automation—it's augmented financial intelligence that transforms the chore of budget tracking into an engaging, personalized experience that actually helps us make better money decisions.
+
+## It took me 80 hours to build an AI agent using AI! wait what?
+
+The objective of this project wasn't just to create something useful for us—it was to learn. As the husband (and coder) in this duo, I built this entire product using AI only as a tool to learn and help with auxiliary tasks. After many trials and errors, I found the sweet spot where I remained deeply challenged and had to think through infrastructure and solutions myself, while still leveraging AI effectively.
+
+**My AI-Assisted Learning Framework:**
+
+**1. Strategic Planning & Architecture**  
+I asked the AI what I needed to implement this project and how to think about designing it. This wasn't about getting code—it, it was about understanding system architecture, data flow patterns, and technology choices. The AI became my brainstorming partner for the big picture.
+
+**2. Deep Knowledge Acquisition**  
+Whenever I hit knowledge gaps, I didn't just ask for the specific snippet I needed. Instead, I used AI to deep dive into entire concepts—understanding. For example, learning LangGraph was not just for my workflow, but as a paradigm for building agent systems. This broader context has empowered me and inspired me to keep building agents for the sake of learning, even though it wont help me with my future day to day work as a Data Scientist (but who knows! AI engenering in the horizon? haha)
+
+**3. Strategic Decision Making**  
+I treated AI as a thinking partner, sharing my plans and discussing the best strategies for implementing processes and choosing tools. How should I structure my agent nodes? What email sending options do I have? What's the tradeoff between MongoDB and PostgreSQL? These conversations sharpened my technical judgment.
+
+**4. Bug Detection (Not Solutions)**  
+Instead of waiting for things to break, I used AI to help identify what potential pitfals and then attempt to solve the problems myself. This forced me to truly understand the codebase, error patterns, and debugging strategies. The satisfaction of fixing an issue after wrestling with it for hours? Priceless... sometime, most of the time it was Hell Encarnated in my brain.  
+
+**5. Test Script Generation**  
+Let's be honest—writing test scripts is tedious. I'm human, and that stuff is boring. AI excelled at generating comprehensive test cases, mock data, and validation scripts, so why not?
+
+**The Result?** 80 hours of intense learning that left me with both a working product *and* genuine knoledge in async Python, GraphQL, LangGraph, MongoDB, and AI agent design. I could have built this faster by copy-pasting AI-generated code, but I would have learned nothing. Instead, I used AI as the ultimate learning accelerator—challenging me to think deeper while handling the grunt work.
+
+For now, I will pass over to other exciting projects, but there is still a lot of room for improvement. Send me any recs, recommendations on how to improve this product if you like
+
+
+
