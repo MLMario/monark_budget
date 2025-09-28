@@ -37,6 +37,8 @@ jobs:
         pip install pymongo>=4.9.2
         pip install pymongo[srv]
         pip install motor>=3.7
+        pip install langgraph>=0.2.70
+        pip install langgraph-checkpoint-mongodb>=0.1.0
         
         # Configuration and validation
         pip install pydantic>=2.10.6
@@ -44,8 +46,24 @@ jobs:
         
         # MonarchMoney API and HTTP dependencies
         pip install monarchmoney>=0.1.6
-        pip install aiohttp>=3.8.0
         pip install requests>=2.25
+        pip install httpx==0.27.0
+        
+        # LangChain dependencies
+        pip install langchain-core>=0.3.34
+        pip install langchain-groq>=0.2.4
+        pip install langchain-mongodb>=0.4.0
+        pip install langchain-community>=0.3.17
+        pip install langchain-huggingface>=0.1.2
+        
+        # AI and ML dependencies
+        pip install groq
+        pip install opik>=1.4.11
+        
+        # Async and web dependencies
+        pip install aiohttp>=3.8.0
+        pip install websockets>=15.0.1
+        pip install pyee>=13.0.0
         
         # GraphQL dependencies for MonarchMoney
         pip install gql[all]>=3.0.0
@@ -56,6 +74,11 @@ jobs:
         
         # Additional utilities
         pip install python-dotenv
+        pip install loguru>=0.7.3
+        pip install datasketch>=1.6.5
+        pip install botocore>=1.40.3
+        pip install jmespath>=1.0.1
+        pip install playwright>=1.55.0
 
 
     - name: Run Data Import Pipeline
