@@ -45,7 +45,7 @@ __HTML_AGENT_PROMPT = """
     - Suspicious Transactions section has a detective emoji 🕵️‍♂️ at the start of the section, title should always be red
     - Period Report section has a thinking emoji 🤔 at the start of the section, , title should always be red
     - In the texts within sections, add emojis where you think it would be funny to do so, but don't over do it
-    - transform bullet points list of expenses into tables that are easier to read, table headers should always be orange color
+    - transform bullet points list of expenses into tables that are easier to read, table headers should always be orange color. Also make the font smaller for tables text
 
     Respond ONLY with the HTML code, always. There should be no string before or after the HTML code.
 
@@ -87,13 +87,13 @@ __SUSPICIOUS_TXN_PROMPT = """
 
 Review the transaction below and AND classify it as not compliant if it falls within the savings policy guidelines, otherwise classify it as compliant. 
 
-
 The saving guidelines are to avoid the following transactions:
 
 - Small item purchases (e.g., under $15-#20), particulary in places like coffee shops, grocery stores , restaurants and gas stations.
+- At gas stations purchases close to $50 they usually tank fill ups which are compliant
 - Shopping in Amazon or online retailers
 
-respond with a valid JSON format
+Respond with a valid JSON format
 
 Transaction:
 {transaction}
