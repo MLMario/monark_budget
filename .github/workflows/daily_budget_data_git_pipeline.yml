@@ -14,6 +14,15 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+    env:
+        MONARK_PW: ${{ secrets.MONARK_PW }}
+        MONARK_USER: ${{ secrets.MONARK_USER }}
+        MONARK_DD_ID: ${{ secrets.MONARK_DD_ID }}
+        MONGO_URL: ${{ secrets.MONGO_URL }}
+        MONGO_DB: ${{ secrets.MONGO_DB }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        SMTP_USER: ${{ secrets.SMTP_USER }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
     
     steps:
     - name: Checkout repository
@@ -81,17 +90,7 @@ jobs:
         pip install playwright>=1.55.0
 
 
-    - name: Run Data Import Pipeline
-      env:
-        MONARK_PW: ${{ secrets.MONARK_PW }}
-        MONARK_USER: ${{ secrets.MONARK_USER }}
-        MONARK_DD_ID: ${{ secrets.MONARK_DD_ID }}
-        MONGO_URL: ${{ secrets.MONGO_URL }}
-        MONGO_DB: ${{ secrets.MONGO_DB }}
-        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        SMTP_USER: ${{ secrets.SMTP_USER }}
-        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-    
+    - name: Run Data Import Pipeline   
       run: |
         python -m services.api.pipelines.data_import_pipeline
 
