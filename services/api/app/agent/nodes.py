@@ -70,8 +70,6 @@ async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
 
     #Create MongoDB Client to Import Data 
     mongo_client = AsyncMongoDBClient() 
-
-    logger.info("Importing Budget Data from MongoDB [START]")
     budget_json = await mongo_client.import_budget_data(filter_query={'category_group_type': 'expense'})
     
     # Data Model Validation Processing (Implicit given the use of Pydantic models)
@@ -184,7 +182,6 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
         clean_response = clean_llm_output(response_text) 
         json_text = extract_json_text(clean_response)
 
-
         try: 
            
            response_dict = json.loads(json_text)
@@ -206,7 +203,6 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
                     suspicious_transaction=txn_model
                 )
 
-                print(suspicious_txn.suspicious_transaction)
                 
                 suspicious_transactions.append(suspicious_txn)
        
@@ -431,7 +427,7 @@ async def email_node(state: BudgetAgentState) -> BudgetAgentState:
     )
 
     send_email = SendEmail(email_info)
-    
+
     await send_email.send_email_async(is_html=is_html)
 
     state.email_info = email_info
