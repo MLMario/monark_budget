@@ -1,4 +1,4 @@
-# Agemt for Money Monark Budget: An Intelligent Financial Companion
+# Agent for Money Monark Budget: An Intelligent Financial Companion
 
 ## The Problem: When Budgeting Becomes a Chore
 
@@ -259,8 +259,8 @@ Every day, we wake up to emails that don't just tell us we overspent—they tell
 
 This isn't just automation—it's augmented financial intelligence that transforms the chore of budget tracking into an engaging, personalized experience that actually helps us make better money decisions.
 
-[Email 1](IMG_1010.jpeg) 
-[Email 2](IMG_1011.jpeg)
+![Email 1](IMG_1010.jpeg)
+![Email 2](IMG_1011.jpeg)
 
 
 ## It took me 80 hours to build an AI agent using AI! wait what?
