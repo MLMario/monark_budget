@@ -328,28 +328,33 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
         
         for record in over_spend_budget:
 
-            print ("transaction record:", record)
+            logger.info("Processing category: %s", record.get('category_name'))
 
             category_name = record.get('category_name')
+            logger.info("Period Report Task: Starting Analysis of Category %s", record.get('category_name'))
 
             # Filter transactions for the current category
             current_month_category_txn = [txn_record for txn_record in current_month_txn if txn_record.get('category_name') == category_name]
             previous_month_category_txn = [txn_record for txn_record in previous_month_txn if txn_record.get('category_name') == category_name]
 
             response_text = await call_llm_reasoning(
+                model = Settings.GROQ_OPENAI_20B_MODE,
                 temperature = 0.8,
                 prompt_obj = TXN_ANALYSIS_PROMPT,
                 this_month_txn = json.dumps(current_month_category_txn, indent=2),
                 last_month_txn = json.dumps(previous_month_category_txn, indent=2),
                 max_tokens=600,
-                reasoning_effort='default',
+                reasoning_effort='high',
                 reasoning_format='hidden'
             )
 
             response_text_cleaned = clean_llm_output(response_text)
 
+            logger.info("Period Report Task: Category Analysis Complete for %s", record.get('category_name'))
+            logger.info("Period Report Task: LLM Category Analysis Response: %s", response_text_cleaned)
+
             #model validation and processing
-            response_dict = ReportCategory(
+            response_model = ReportCategory(
                 category_budget_variability=record.get("category_budget_variability"),
                 category_name=category_name,
                 category_group_name=record.get("category_group_name"),
@@ -357,19 +362,20 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
                 llm_response=response_text_cleaned
             )
 
-            analysis_responses.append(response_dict)
+            analysis_responses.append(response_model)
 
         periodo_report_data_input = json.dumps([json.loads(ReportCategory.model_dump_json(response)) for response in analysis_responses], indent=2)
 
         print(periodo_report_data_input)
 
         response_period_report = await call_llm_reasoning(
+            model = Settings.GROQ_OPENAI_20B_MODE,
             temperature = 0.8,
             prompt_obj=PERIOD_REPORT_PROMPT,
             max_tokens= 4020 ,
             periodo_report_data_input = periodo_report_data_input,
+            reasoning_effort='high',
             reasoning_format = 'hidden'
-
         )
 
         state.period_report = response_period_report
