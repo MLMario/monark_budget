@@ -46,7 +46,9 @@ __HTML_AGENT_PROMPT = """
     - Period Report section has a thinking emoji 🤔 at the start of the section, , title should always be red
     - In the texts within sections, add emojis where you think it would be funny to do so, but don't over do it
     - transform bullet points list of expenses into tables that are easier to read, also add total sum for numerical columns. Table headers should always be bright orange color. Also make the font smaller for table text, about 3/4 of normal text size
-
+    - In tables, numerical values should be formatted as currency, with dollar sign and two decimal places (e.g., $123.45)
+    - Table should be compact but easy to read, with some spacing between rows and columns
+    - As font, use monsterat normal for text and monsterat bold for titles and table headers
 
     Respond ONLY with the HTML code, always. There should be no string before or after the HTML code.
 
@@ -104,12 +106,13 @@ SUSPICIOUS_TXN_PROMPT = Prompt(
 
 
 __SUSPICIOUS_TXN_STORY_PROMPT = """
-List all the suspicious transactions in a bullet point list.
+
+This is a list of suspicious transactions that were classified as non-compliant with the savings policy guidelines:
 
 Transactions:
 {suspicious_transactions}
 
-In less than 100 words, make a witty funny comment making fun of Mario and Alicia for doing these transactions.
+Respond with a bullet point list of all this transactions and then, In less than 100 words, make a witty funny comment making fun of Mario and Alicia for doing these transactions.
 
 """
 

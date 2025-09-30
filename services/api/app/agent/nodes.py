@@ -303,28 +303,31 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
     - Updates process_flag.period_report_done = True
     
     """
-    if state.overspend_budget_data != "No Data, User hasn't overspent":
-        over_spend_budget = json.loads(state.overspend_budget_data).get("overspend_categories","")
-    else:
-        over_spend_budget = state.overspend_budget_data
-
-
 
     analysis_responses = []
 
-    if over_spend_budget != "No Data, User hasn't overspent":
+    if state.overspend_budget_data != "No Data, User hasn't overspent":
 
         over_spend_budget = json.loads(state.overspend_budget_data).get("overspend_categories","")
 
         if state.current_month_txn != "No Data, User hasn't done any transaction this month":
+
             current_month_txn = json.loads(state.current_month_txn)
-        else: 
+            is_cmtxn_present = True
+        else:
+            # current_month_txn = "No Data, User hasn't done any transaction this month" in this case
             current_month_txn = state.current_month_txn
+            is_cmtxn_present = False
 
         if state.previous_month_txn != "No Data, User hasn't done any transaction last month":
             previous_month_txn = json.loads(state.previous_month_txn)
+            is_pmtxn_present = True
         else:
+            #same logic as current month txn
             previous_month_txn = state.previous_month_txn
+            is_pmtxn_present = False
+        
+
         
         for record in over_spend_budget:
 
@@ -334,16 +337,24 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
             logger.info("Period Report Task: Starting Analysis of Category %s", record.get('category_name'))
 
             # Filter transactions for the current category
-            current_month_category_txn = [txn_record for txn_record in current_month_txn if txn_record.get('category_name') == category_name]
-            previous_month_category_txn = [txn_record for txn_record in previous_month_txn if txn_record.get('category_name') == category_name]
+            if  is_cmtxn_present:
+                current_month_category_txn = json.dumps([txn_record for txn_record in current_month_txn if txn_record.get('category_name') == category_name], indent=2)
+            else:
+                current_month_category_txn = current_month_txn
+
+            if is_pmtxn_present:    
+               previous_month_category_txn = json.dumps([txn_record for txn_record in previous_month_txn if txn_record.get('category_name') == category_name], indent=2)
+            else:
+               previous_month_category_txn = previous_month_txn
+
 
             response_text = await call_llm_reasoning(
                 model = Settings.GROQ_OPENAI_20B_MODE,
                 temperature = 0.8,
                 prompt_obj = TXN_ANALYSIS_PROMPT,
-                this_month_txn = json.dumps(current_month_category_txn, indent=2),
-                last_month_txn = json.dumps(previous_month_category_txn, indent=2),
-                max_tokens=600,
+                this_month_txn = current_month_category_txn,
+                last_month_txn = previous_month_category_txn,
+                max_tokens=500,
                 reasoning_effort='high',
                 reasoning_format='hidden'
             )
