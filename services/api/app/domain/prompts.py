@@ -45,7 +45,8 @@ __HTML_AGENT_PROMPT = """
     - Suspicious Transactions section has a detective emoji 🕵️‍♂️ at the start of the section, title should always be red
     - Period Report section has a thinking emoji 🤔 at the start of the section, , title should always be red
     - In the texts within sections, add emojis where you think it would be funny to do so, but don't over do it
-    - transform bullet points list of expenses into tables that are easier to read, table headers should always be orange color. Also make the font smaller for tables text
+    - transform bullet points list of expenses into tables that are easier to read, also add total sum for numerical columns. Table headers should always be bright orange color. Also make the font smaller for table text, about 3/4 of normal text size
+
 
     Respond ONLY with the HTML code, always. There should be no string before or after the HTML code.
 
@@ -64,10 +65,7 @@ HTNML_AGENT_PROMPT = Prompt(
 
 __BUDGET_ALERT_PROMPT = """ 
 
-Analyze this budget data and identify:
-    1. Categories exceeding budget (remaining_amount will be negative)
-    2. Categories exceeding budget with unplanned budget (planned_cash_flow_amount will be 0 and remaining_amount will be negative)
-    3. if no data is provided, that means the user hasn't overspend in any categories, don't mention to the user there is no data, just aknowledge that there is no overspend
+    You will be provided a budget data in JSON format that contains a list of categories where the user has overspent their planned budget.
         
     Data: {budget_data}
 
@@ -81,7 +79,6 @@ BUDGET_ALERT_PROMPT = Prompt(
     name = "budget_alert",
     prompt =__BUDGET_ALERT_PROMPT
 )
-
 
 __SUSPICIOUS_TXN_PROMPT = """
 
@@ -107,14 +104,12 @@ SUSPICIOUS_TXN_PROMPT = Prompt(
 
 
 __SUSPICIOUS_TXN_STORY_PROMPT = """
-
-Review this transactions and write a fictional funny story where characters Alicia, Mario or one of them go through thier day and despite nowing better,
- they do these transactions. Make fun of them or the character represented in the story and create a witty funny conclusion on how they learn their lesson on not doing it again!
+List all the suspicious transactions in a bullet point list.
 
 Transactions:
 {suspicious_transactions}
 
-Keep the story under 250 words and after a story, list all the suspicious transactions in a bullet point list.
+In less than 100 words, make a witty funny comment making fun of Mario and Alicia for doing these transactions.
 
 """
 
@@ -157,12 +152,7 @@ TXN_ANALYSIS_PROMPT = Prompt(
 
 
 __PERIOD_REPORT_PROMPT = """
-
-You are an expert financial assistant that helps users manage their budgets and finances effectively for a couple Named Mario and Alicia.
- You are also know for being funny and witty while providing financial advice.
-
-Here is a list of budget categories that were overspent this period accompanied by an analysis of what
- drove the overspend and recommendations to reduce spend in that category:
+Here is a list of budget categories that were overspent this period accompanied by an analysis of what drove the overspend and recommendations to reduce spend in that category:
 
 {periodo_report_data_input}
 
@@ -174,11 +164,10 @@ In this data you have the following fields per category:
         overspent_amount = It's the amount overspent in this category
         llm_response= It's the response from an LLM that analyzed the transactions of this category and provided insights on what drove the overspend and recommendations to reduce spend in that category
 
-Your task is to create a report that includes the following sections:
+Your task is to create a 450 word or less report that includes the following sections:
 1). Most impactful drivers of spend across all overspent categories (max 5 bullet points)
 2). Recommended actions to reduce overall spend (max 5 bullet points)
 3). A comprehensive and very funny summary of the user's spending behavior this period (max 400 words)
-
 
 """
 
