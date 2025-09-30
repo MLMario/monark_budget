@@ -5,20 +5,16 @@ import json
 import os
 import pickle
 import time
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 import oathtool
 from aiohttp import ClientSession, FormData
-from aiohttp.client import DEFAULT_TIMEOUT
-from gql import Client, gql, GraphQLRequest
+from gql import Client, GraphQLRequest, gql
 from gql.transport.aiohttp import AIOHTTPTransport
 from graphql import DocumentNode
 
 from config import Settings
-
-
-from pathlib import Path, PurePath
 
 AUTH_HEADER_KEY = "authorization"
 CSRF_KEY = "csrftoken"
@@ -68,7 +64,7 @@ class MonarchMoney(object):
             "Client-Platform": "web",
             "Content-Type": "application/json",
             "User-Agent": "MonarchMoneyAPI (https://github.com/hammem/monarchmoney)",
-            'Device-UUID' : Settings.MONARK_DD_ID.get_secret_value()
+            "Device-UUID": Settings.MONARK_DD_ID.get_secret_value(),
         }
         if token:
             self._headers["Authorization"] = f"Token {token}"
@@ -118,22 +114,24 @@ class MonarchMoney(object):
     ) -> None:
         """Logs into a Monarch Money account."""
         if use_saved_session and os.path.exists(self._session_file):
-            
-          self.load_session(self._session_file)
 
-          if await self._validate_token():
-            print(f"Using saved session found at {self._session_file}")
-            return
-          else:
-            print(f"Using saved session found at {self._session_file}. File deleted")
-            print(f"Proceeding with login using email and password.")
-            self.delete_session(self._session_file)
+            self.load_session(self._session_file)
+
+            if await self._validate_token():
+                print(f"Using saved session found at {self._session_file}")
+                return
+            else:
+                print(
+                    f"Using saved session found at {self._session_file}. File deleted"
+                )
+                print(f"Proceeding with login using email and password.")
+                self.delete_session(self._session_file)
 
         if (email is None) or (password is None) or (email == "") or (password == ""):
             raise LoginFailedException(
                 "Email and password are required to login when not using a saved session."
             )
-        
+
         await self._login_user(email, password, mfa_secret_key)
 
         if save_session:
@@ -145,8 +143,8 @@ class MonarchMoney(object):
             await self.gql_call("Ping", q, {})
             return True
         except Exception:
-          return False
-    
+            return False
+
     async def multi_factor_authenticate(
         self, email: str, password: str, code: str
     ) -> None:
@@ -2819,13 +2817,13 @@ class MonarchMoney(object):
         Makes a GraphQL call to Monarch Money's API.
         """
         req = GraphQLRequest(
-          graphql_query,
-          operation_name=operation,
-          variable_values=variables or {},
+            graphql_query,
+            operation_name=operation,
+            variable_values=variables or {},
         )
 
         async with self._get_graphql_client() as session:
-            return await session.execute(req) 
+            return await session.execute(req)
 
     def save_session(self, filename: Optional[str] = None) -> None:
         """
@@ -2862,10 +2860,10 @@ class MonarchMoney(object):
 
         if os.path.exists(filename):
             os.remove(filename)
-        
+
         if "Authorization" in self._headers:
             del self._headers["Authorization"]
-    
+
         self._token = None
 
     async def _login_user(
@@ -2942,11 +2940,12 @@ class MonarchMoney(object):
         """
 
         if not self._token and "Authorization" not in self._headers:
-           raise LoginFailedException("Make sure you call login() first or provide a session token!")
-    
+            raise LoginFailedException(
+                "Make sure you call login() first or provide a session token!"
+            )
 
         if self._token and "Authorization" not in self._headers:
-          self._headers["Authorization"] = f"Token {self._token}"
+            self._headers["Authorization"] = f"Token {self._token}"
 
         transport = AIOHTTPTransport(
             url=MonarchMoneyEndpoints.getGraphQL(),

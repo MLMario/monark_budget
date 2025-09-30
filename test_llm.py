@@ -2,11 +2,10 @@
 Simple test file to test the call_llm function with BUDGET_ALERT_PROMPT
 """
 
-import sys
-import os
 import asyncio
 import json
-
+import os
+import sys
 
 # Add the services/api/app path to Python path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), 'services', 'api'))
@@ -14,6 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'services', 'api'))
 from app.agent.agent_utilities import call_llm, filter_overspent_categories
 from app.domain.prompts import BUDGET_ALERT_PROMPT
 from pipelines.mongo_client import AsyncMongoDBClient
+
 
 async def test_llm():
     """Test the call_llm function with BUDGET_ALERT_PROMPT"""

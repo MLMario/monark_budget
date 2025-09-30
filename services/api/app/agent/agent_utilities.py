@@ -14,17 +14,20 @@ from services.api.app.domain.prompts import SYSTEM_PROMPT
 def filter_overspent_categories(budget_json: str) -> str:
 
     budget_data = json.loads(budget_json)
-    
+
     filtered_data = [
-        budget_record for budget_record in budget_data if budget_record.get('remaining_amount', 0) < -5
+        budget_record
+        for budget_record in budget_data
+        if budget_record.get("remaining_amount", 0) < -5
     ]
-    
+
     # Return empty object string if no overspent categories
     if not filtered_data:
-        return ''
-    
+        return ""
+
     # Return as JSON string
     return json.dumps(filtered_data, default=str)
+
 
 def task_management(_state=None):
 
@@ -37,82 +40,68 @@ def task_management(_state=None):
 
     return "both_tasks" if (is_monday or is_first_day_of_month) else "daily_tasks"
 
+
 async def call_llm(
-        temperature=0.7,
-        system_prompt = SYSTEM_PROMPT.prompt,
-        prompt_obj=None,
-        max_tokens=4020,
-        model = Settings.GROQ_LLAMA_VERSATILE,
-        api_key = Settings.GROQ_API_KEY.get_secret_value(),
-        response_format = 'text',
-        **kwargs):
+    temperature=0.7,
+    system_prompt=SYSTEM_PROMPT.prompt,
+    prompt_obj=None,
+    max_tokens=4020,
+    model=Settings.GROQ_LLAMA_VERSATILE,
+    api_key=Settings.GROQ_API_KEY.get_secret_value(),
+    response_format="text",
+    **kwargs
+):
 
-    client = AsyncGroq(
-        api_key=Settings.GROQ_API_KEY.get_secret_value()
-        )
-    
+    client = AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
+
     formatted_prompt = prompt_obj.prompt.format(**kwargs)
-    
-    completion = await client.chat.completions.create(
-        model= model,
 
-        messages=[{
-                "role": "system",
-                "content": system_prompt
-        }
-            ,{
-                "role": "user",
-                "content": formatted_prompt
-            }
+    completion = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": formatted_prompt},
         ],
         temperature=temperature,
-
         max_tokens=max_tokens,
-        response_format=  {'type': response_format}
+        response_format={"type": response_format},
     )
-    
+
     return completion.choices[0].message.content
-    
+
 
 async def call_llm_reasoning(
-        temperature=0.7,
-        system_prompt = SYSTEM_PROMPT.prompt,
-        prompt_obj=None,
-        max_tokens= 4020 ,
-        model = Settings.GROQ_QWEN_REASONING,
-        api_key = Settings.GROQ_API_KEY.get_secret_value(),
-        reasoning_effort = 'default',
-        reasoning_format = 'hidden',
-        response_format = 'text',
-        **kwargs):
+    temperature=0.7,
+    system_prompt=SYSTEM_PROMPT.prompt,
+    prompt_obj=None,
+    max_tokens=4020,
+    model=Settings.GROQ_QWEN_REASONING,
+    api_key=Settings.GROQ_API_KEY.get_secret_value(),
+    reasoning_effort="default",
+    reasoning_format="hidden",
+    response_format="text",
+    **kwargs
+):
 
-    client = AsyncGroq(
-        api_key=Settings.GROQ_API_KEY.get_secret_value()
-        )
-    
+    client = AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
+
     formatted_prompt = prompt_obj.prompt.format(**kwargs)
-    
-    completion = await client.chat.completions.create(
-        model= model,
 
-        messages=[{
-                "role": "system",
-                "content": system_prompt
-        }
-            ,{
-                "role": "user",
-                "content": formatted_prompt
-            }
+    completion = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": formatted_prompt},
         ],
         temperature=temperature,
         reasoning_effort=reasoning_effort,
         max_tokens=max_tokens,
         reasoning_format=reasoning_format,
-        response_format=  {'type': response_format}
-
+        response_format={"type": response_format},
     )
-    
+
     return completion.choices[0].message.content
+
 
 def clean_llm_output(raw_text: str) -> str:
     """
@@ -152,23 +141,22 @@ def extract_json_text(cleaned_text: str):
     return json_text
 
 
-
 class SendEmail:
 
-    def __init__(self,EmailINfo):
+    def __init__(self, EmailINfo):
         self.from_ = EmailINfo.from_
         self.to = EmailINfo.to
         self.subject = EmailINfo.subject
         self.body = EmailINfo.body
         self.ADDRESS = Settings.SMTP_USER
         self.PASSWORD = Settings.SMTP_PASSWORD.get_secret_value()
-    
+
     async def send_email_async(self, is_html=False):
 
         msg = EmailMessage()
-        msg['Subject'] = self.subject
-        msg['From'] = self.from_ 
-        msg['To'] = self.to
+        msg["Subject"] = self.subject
+        msg["From"] = self.from_
+        msg["To"] = self.to
 
         if not is_html:
             msg.set_content(self.body)
@@ -183,17 +171,16 @@ class SendEmail:
             server.login(self.ADDRESS, self.PASSWORD)
             server.send_message(msg)
 
-import re
-
 class HTMLValidator(HTMLParser):
     def __init__(self):
         super().__init__()
         self.valid_html = True
         self.error_msg = ""
-    
+
     def error(self, message):
         self.valid_html = False
         self.error_msg = message
+
 
 def validate_html(text: str) -> str:
     """
@@ -202,11 +189,11 @@ def validate_html(text: str) -> str:
     """
     if not text or not text.strip():
         return text, False
-    
+
     # Quick check: if it doesn't contain HTML tags, return as-is
-    if not re.search(r'<[^>]+>', text):
+    if not re.search(r"<[^>]+>", text):
         return text, False
-    
+
     validator = HTMLValidator()
     try:
         validator.feed(text)
@@ -215,8 +202,8 @@ def validate_html(text: str) -> str:
         if validator.valid_html:
             return text, True
         else:
-            
+
             return text, False
     except Exception as exc:
-        
+
         return text, False

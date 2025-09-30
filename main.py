@@ -58,7 +58,9 @@ async def run_agent() -> BudgetAgentState:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
 
     try:
         final_state = asyncio.run(run_agent())
@@ -72,7 +74,9 @@ def main() -> None:
     print("Process flags:", final_state.process_flag.model_dump())
     if email_info:
         print("Email subject:", email_info.subject)
-        snippet = email_info.body[:400].replace("\n", " ") + ("..." if len(email_info.body) > 400 else "")
+        snippet = email_info.body[:400].replace("\n", " ") + (
+            "..." if len(email_info.body) > 400 else ""
+        )
         print("Email preview:", snippet)
     else:
         print("No email info captured.")

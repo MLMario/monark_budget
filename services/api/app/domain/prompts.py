@@ -28,7 +28,7 @@ class Prompt:
 
     def __repr__(self) -> str:
         return self.__str__()
-    
+
 
 __SYSTEM_PROMPT = """
 
@@ -41,9 +41,9 @@ __HTML_AGENT_PROMPT = """
 
     Keep the email sections intact and the flow exactly the same, but make changes so that:
     - It has clear section separations
-    - Daily Overspend section has an alarm emoji 🚨 at the start of the section, title should always be red
-    - Suspicious Transactions section has a detective emoji 🕵️‍♂️ at the start of the section, title should always be red
-    - Period Report section has a thinking emoji 🤔 at the start of the section, , title should always be red
+    - Daily Overspend section has an alarm emoji at the start of the section, title should always be red
+    - Suspicious Transactions section has a detective emoji at the start of the section, title should always be red
+    - Period Report section has a thinking emoji at the start of the section, , title should always be red
     - In the texts within sections, add emojis where you think it would be funny to do so, but don't over do it
     - transform bullet points list of expenses into tables that are easier to read, also add total sum for numerical columns. Table headers should always be bright orange color. Also make the font smaller for table text, about 3/4 of normal text size
     - In tables, numerical values should be formatted as currency, with dollar sign and two decimal places (e.g., $123.45)
@@ -54,15 +54,9 @@ __HTML_AGENT_PROMPT = """
 
 """
 
-SYSTEM_PROMPT = Prompt(
-    name="system_prompt",
-    prompt=__SYSTEM_PROMPT
-)
+SYSTEM_PROMPT = Prompt(name="system_prompt", prompt=__SYSTEM_PROMPT)
 
-HTNML_AGENT_PROMPT = Prompt(
-    name="html_agent_prompt",   
-    prompt=__HTML_AGENT_PROMPT
-)
+HTNML_AGENT_PROMPT = Prompt(name="html_agent_prompt", prompt=__HTML_AGENT_PROMPT)
 
 
 __BUDGET_ALERT_PROMPT = """ 
@@ -77,10 +71,7 @@ __BUDGET_ALERT_PROMPT = """
     
     """
 
-BUDGET_ALERT_PROMPT = Prompt(
-    name = "budget_alert",
-    prompt =__BUDGET_ALERT_PROMPT
-)
+BUDGET_ALERT_PROMPT = Prompt(name="budget_alert", prompt=__BUDGET_ALERT_PROMPT)
 
 __SUSPICIOUS_TXN_PROMPT = """
 
@@ -99,10 +90,7 @@ Transaction:
 
 """
 
-SUSPICIOUS_TXN_PROMPT = Prompt(     
-    name="suspicious_txn",
-    prompt=__SUSPICIOUS_TXN_PROMPT
-)
+SUSPICIOUS_TXN_PROMPT = Prompt(name="suspicious_txn", prompt=__SUSPICIOUS_TXN_PROMPT)
 
 
 __SUSPICIOUS_TXN_STORY_PROMPT = """
@@ -117,8 +105,7 @@ Respond with a bullet point list of all this transactions and then, In less than
 """
 
 SUSPICIOUS_TXN_STORY_PROMPT = Prompt(
-    name="suspicious_txn_story",
-    prompt=__SUSPICIOUS_TXN_STORY_PROMPT
+    name="suspicious_txn_story", prompt=__SUSPICIOUS_TXN_STORY_PROMPT
 )
 
 # ...existing code...
@@ -147,10 +134,7 @@ Return only the two sections (with the exact headings). Do not include JSON, cod
 
 """
 
-TXN_ANALYSIS_PROMPT = Prompt(
-    name="txn_analysis",
-    prompt=__TXN_ANALYSIS_PROMPT
-)
+TXN_ANALYSIS_PROMPT = Prompt(name="txn_analysis", prompt=__TXN_ANALYSIS_PROMPT)
 # ...existing code...
 
 
@@ -174,7 +158,4 @@ Your task is to create a 450 word or less report that includes the following sec
 
 """
 
-PERIOD_REPORT_PROMPT = Prompt(
-    name="period_report",
-    prompt=__PERIOD_REPORT_PROMPT
-)
+PERIOD_REPORT_PROMPT = Prompt(name="period_report", prompt=__PERIOD_REPORT_PROMPT)

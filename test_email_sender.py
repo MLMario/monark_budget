@@ -1,9 +1,9 @@
 
-from services.api.app.agent.state import EmailInfo
-from config import Settings
 import smtplib
 from email.message import EmailMessage
 
+from config import Settings
+from services.api.app.agent.state import EmailInfo
 
 email_info = EmailInfo(
     from_="mariogj1987@gmail.com",

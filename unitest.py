@@ -3,24 +3,22 @@ from datetime import date
 from typing import Any
 
 import pytest
-from langgraph.graph import START, END, StateGraph
+from langgraph.graph import END, START, StateGraph
 
+from config import Settings
 from services.api.app.agent.nodes import (
-    import_data_node,
     coordinator_node,
     daily_overspend_alert_node,
+    import_data_node,
 )
 from services.api.app.agent.state import (
     BudgetAgentState,
     DailyAlertOverspend,
     DailyAlertSuspiciousTransaction,
-    PeriodInfo,
-    PeriodReport,
     ProcessFlag,
     ReportCategory,
     RunMeta,
 )
-from config import Settings
 
 SAMPLE_BUDGET_ROWS = [
     {
@@ -61,6 +59,9 @@ class FakeAsyncMongoDBClient:
     async def import_transaction_data(self, start_date: str, end_date: str) -> str:
         return json.dumps(SAMPLE_TRANSACTIONS)
 
+    def close_connection(self) -> None:
+        pass
+
 
 async def fake_call_llm(*args, **kwargs) -> str:
     return FAKE_ALERT_TEXT
@@ -82,25 +83,14 @@ def make_initial_state() -> BudgetAgentState:
     return BudgetAgentState(
         run_meta=RunMeta(run_id="test-run", today=date(2024, 5, 4), tz="UTC"),
         current_month_budget=None,
-        current_month_txn=[],
-        previous_month_txn=[],
+        current_month_txn=None,
+        previous_month_txn=None,
         last_day_txn=[],
         overspend_budget_data=None,
-        period_info=PeriodInfo(
-            is_end_of_period=False,
-            type="week",
-            start=date(2024, 4, 29),
-            end=date(2024, 5, 5),
-        ),
         daily_overspend_alert=DailyAlertOverspend(),
         daily_suspicious_transactions=[],
         daily_alert_suspicious_transaction=DailyAlertSuspiciousTransaction(),
-        report_category=ReportCategory(
-            category_name="Placeholder",
-            category_group_name="General",
-            overspent_amount=0.0,
-        ),
-        period_report=PeriodReport(period="month", categories_in_report=[]),
+        period_report=None,
         process_flag=ProcessFlag(),
         email_info=None,
     )
