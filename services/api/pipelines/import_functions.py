@@ -4,7 +4,10 @@ from typing import Any, Dict, Optional
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from services.api.app.exceptions import MonarchMoneyDataError, MonarchMoneyLoginError
+from services.api.app.logging_config import get_logger
 from services.api.pipelines.monarchmoney import MonarchMoney, RequireMFAException
+
+logger = get_logger(__name__)
 
 """
 MONARK FUNCTIONS
@@ -41,7 +44,7 @@ class MonarkImport:
     def _ensures_is_logged_in(self):
 
         if not self._logged_in or self.monarch is None:
-            print("Must be logged in before using method :).")
+            logger.error("MonarchMoney login required but not authenticated")
             raise MonarchMoneyLoginError("Failed to login to MonarchMoney. Aborting import.")
 
     @retry(
@@ -68,27 +71,28 @@ class MonarkImport:
         """
         try:
 
-            print("Attempting to log in to MonarchMoney...")
+            logger.info("Attempting to log in to MonarchMoney", extra={"user": user})
             await self.monarch.login(user, pw)
 
             self._logged_in = True
-            print("Logged in to MonarchMoney successfully.")
+            logger.info("Logged in to MonarchMoney successfully")
             return True
 
         except RequireMFAException as mfa:
-            print(f"Multi-factor authentication required: {mfa}")
+            logger.warning(f"Multi-factor authentication required", extra={"mfa_detail": str(mfa)})
             if not mfa_code:
+                logger.error("MFA code required but not provided")
                 raise RequireMFAException("MFA code required but not provided") from mfa
             await self.monarch.multi_factor_authenticate(user, pw, mfa_code)
 
             self._logged_in = True
-            print("Logged in to MonarchMoney successfully with MFA.")
+            logger.info("Logged in to MonarchMoney successfully with MFA")
 
             return True
 
         except Exception as e:
 
-            print(f"Error initializing MonarchMoney: {e}")
+            logger.error(f"Error initializing MonarchMoney: {e}", exc_info=True)
             self._logged_in = False
             raise MonarchMoneyLoginError(f"Failed to login to MonarchMoney: {e}") from e
 

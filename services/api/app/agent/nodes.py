@@ -82,9 +82,13 @@ logger = logging.getLogger(__name__)
 
 
 async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
+    logger.info("Starting data import node")
 
     # Create MongoDB Client to Import Data
+    logger.debug("Connecting to MongoDB")
     mongo_client = AsyncMongoDBClient()
+
+    logger.info("Importing budget data from MongoDB")
     budget_json = await mongo_client.import_budget_data(
         filter_query={"category_group_type": "expense"}
     )
@@ -94,14 +98,14 @@ async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
     budget_rows = [BudgetRow(**row) for row in budget_list_data]
     pydantic_budget_model = BudgetData(current_month_budget=budget_rows)
     state.current_month_budget = pydantic_budget_model.model_dump_json()
-    logger.info("Importing Budget Data from MongoDB [DONE]")
+    logger.info("Budget data imported", extra={"budget_rows": len(budget_rows)})
 
-    logger.info("Filtering Overspent Categories [START]")
-
+    logger.info("Filtering overspent categories")
     overspend_json = filter_overspent_categories(budget_json)
 
     if not overspend_json:
         state.overspend_budget_data = "No Data, User hasn't overspent"
+        logger.info("No overspent categories found")
     else:
         # Data Model Validation Processing (Implicit given the use of Pydantic models)
         overspend_list_data = json.loads(overspend_json)
@@ -112,11 +116,10 @@ async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
 
         # we want the budget data as one json string so that model can look at it all at once, it will not evaluate each category but make an alert message summary
         state.overspend_budget_data = pydantic_overspend_budget_model.model_dump_json()
-    logger.info("Filtering Overspent Categories [DONE]")
-
-    logger.info("Importing Last Day Transaction Data from MongoDB [START]")
+        logger.info("Overspent categories filtered", extra={"overspent_count": len(overspend_rows)})
 
     last_day_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    logger.info("Importing last day transactions", extra={"date": last_day_date})
 
     transactions_json = await mongo_client.import_transaction_data(
         start_date=last_day_date, end_date=last_day_date
@@ -131,9 +134,10 @@ async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
         txn.model_dump_json() for txn in pydantic_transactions_model
     ]  # Keeping as a list since the LLM model should iterate through each transaction
 
-    logger.info("Importing Last Day Transaction Data from MongoDB [DONE]")
+    logger.info("Last day transactions imported", extra={"transaction_count": len(pydantic_transactions_model)})
     mongo_client.close_connection()
 
+    logger.info("Data import node completed successfully")
     return state
 
 
@@ -436,7 +440,13 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
             indent=2,
         )
 
-        print(periodo_report_data_input)
+        logger.debug(
+            "Period report data prepared",
+            extra={
+                "category_count": len(analysis_responses),
+                "data_size": len(periodo_report_data_input),
+            },
+        )
 
         response_period_report = await call_llm_reasoning(
             model=Settings.GROQ_OPENAI_20B_MODE,
