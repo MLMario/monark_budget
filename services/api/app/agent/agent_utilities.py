@@ -37,6 +37,13 @@ def task_management(_state=None):
 
     return "both_tasks" if (is_monday or is_first_day_of_month) else "daily_tasks"
 
+def is_first_day_of_month(state=None) -> bool:
+    today = datetime.now()
+    yesterday = today - timedelta(days=1)
+
+    return today.month != yesterday.month
+    yesterday = today - timedelta(days=1)
+
 async def call_llm(
         temperature=0.7,
         system_prompt = SYSTEM_PROMPT.prompt,
