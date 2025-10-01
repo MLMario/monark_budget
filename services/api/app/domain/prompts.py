@@ -84,9 +84,9 @@ BUDGET_ALERT_PROMPT = Prompt(
 
 __SUSPICIOUS_TXN_PROMPT = """
 
-Review the transaction below and AND classify it as not compliant if it falls within the savings policy guidelines, otherwise classify it as compliant. 
+Review the transaction below and AND classify it as not compliant if it falls within the non compliant transactions policy, otherwise classify it as compliant.
 
-The saving guidelines are to avoid the following transactions:
+The non compliant transactions are the following:
 
 - Small item purchases (e.g., under $15-#20), particulary in places like coffee shops, grocery stores , restaurants and gas stations.
 - At gas stations purchases close to $50 they usually tank fill ups which are compliant
@@ -130,7 +130,7 @@ Do not add any extraneous commentary — respond with the two sections requested
 Transaction data:
 {transaction_data}
 
-Respond with two clearly separated sections (use the exact headings below). Keep your response actionable and concise (<= 200 words). Use bullet points where appropriate.
+Your response should follow the exact format below and should not exceed a total of 350 words in total: 
 
 Drivers of spend within this category:
 - Provide 1 to 3 short observations explaining what is driving spend (examples: frequency of purchases, larger ticket purchases, recurring subscriptions, merchant patterns, day-of-week spikes).

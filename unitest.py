@@ -526,7 +526,7 @@ async def test_eow_period_report_node(monkeypatch):
 
     assert final_state.period_report is not None
     assert final_state.period_report == FAKE_PERIOD_REPORT_TEXT
-    assert final_state.process_flag.period_report_done is True
+    assert final_state.process_flag.eow_period_report_done is True
 
 
 @pytest.mark.anyio("asyncio")
@@ -538,7 +538,7 @@ async def test_eow_period_report_node_no_overspend(monkeypatch):
     final_state = await eow_period_report_node(state)
 
     assert final_state.period_report == "Good Job! You haven't overspent in any category this week, keep it up!"
-    assert final_state.process_flag.period_report_done is True
+    assert final_state.process_flag.eow_period_report_done is True
 
 
 # =====================================================
@@ -562,7 +562,7 @@ async def test_eom_period_report_node(monkeypatch):
 
     assert final_state.period_report is not None
     assert final_state.period_report == FAKE_PERIOD_REPORT_TEXT
-    assert final_state.process_flag.period_report_done is True
+    assert final_state.process_flag.eom_period_report_done is True
 
 
 @pytest.mark.anyio("asyncio")
@@ -574,7 +574,7 @@ async def test_eom_period_report_node_no_overspend(monkeypatch):
     final_state = await eom_period_report_node(state)
 
     assert final_state.period_report == "Good Job! You haven't overspent in any category last month, keep it up!"
-    assert final_state.process_flag.period_report_done is True
+    assert final_state.process_flag.eom_period_report_done is True
 
 
 # =====================================================
@@ -789,7 +789,7 @@ async def test_eow_report_with_live_llm(monkeypatch, fake_mongo_client, capsys):
 
     assert final_state.period_report is not None
     assert final_state.period_report != FAKE_PERIOD_REPORT_TEXT  # Should be real LLM output
-    assert final_state.process_flag.period_report_done is True
+    assert final_state.process_flag.eow_period_report_done is True
 
     captured = capsys.readouterr()
     assert "[LIVE EOW] Testing with real LLM" in captured.out
@@ -831,7 +831,7 @@ async def test_eom_report_with_live_llm(monkeypatch, fake_mongo_client, capsys):
 
     assert final_state.period_report is not None
     assert final_state.period_report != FAKE_PERIOD_REPORT_TEXT  # Should be real LLM output
-    assert final_state.process_flag.period_report_done is True
+    assert final_state.process_flag.eom_period_report_done is True
 
     captured = capsys.readouterr()
     assert "[LIVE EOM] Testing with real LLM" in captured.out

@@ -98,9 +98,15 @@ class MonarkImport:
         self._ensures_is_logged_in()
 
         if bdg_start_date is None and bdg_end_date is None:
-            # Default to first day of current month to first day of next month
+            # Default to first day of PREVIOUS month to first day of NEXT month
+            # This ensures we get 2 months of data (previous month + current month)
             today = datetime.now()
-            start_date = today.replace(day=1)
+
+            # Calculate first day of previous month
+            if today.month == 1:
+                start_date = datetime(today.year - 1, 12, 1)
+            else:
+                start_date = datetime(today.year, today.month - 1, 1)
 
             # Calculate first day of next month
             if today.month == 12:
@@ -110,6 +116,8 @@ class MonarkImport:
 
             bdg_start_date = start_date.strftime('%Y-%m-%d')
             bdg_end_date = end_date.strftime('%Y-%m-%d')
+
+            print(f"MonarkImport get_bdgt: Using default date range from {bdg_start_date} to {bdg_end_date}")
 
         budget = await self.monarch.get_budgets(start_date=bdg_start_date, end_date=bdg_end_date)
         self.imports["budget"] = budget

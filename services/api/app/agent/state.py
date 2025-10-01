@@ -91,7 +91,8 @@ class EmailInfo(BaseModel):
 class ProcessFlag(BaseModel):
     daily_overspend_alert_done: bool = False
     daily_suspicious_transaction_alert_done: bool = False
-    period_report_done: bool = False   
+    eow_period_report_done: bool = False
+    eom_period_report_done: bool = False   
 
 class BudgetAgentState(BaseModel):
 

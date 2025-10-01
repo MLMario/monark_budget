@@ -81,6 +81,10 @@ class Settings(BaseSettings):
         default = "openai/gpt-oss-20b"
     )
 
+    GROQ_OPENAI_120B_MODE: str = Field(  
+        default = "openai/gpt-oss-120b"
+    )
+
     SMTP_USER: str = Field( 
         description = "SMTP user for sending emails",
         env = "SMTP_USER"

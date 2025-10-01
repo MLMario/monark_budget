@@ -46,7 +46,6 @@ def parse_budget_data(budget_data):
     # Part 2: Parse monthlyAmountsByCategory into budget amounts DataFrame
         
     budget_amounts_data = []
-    current_month = datetime.now().strftime('%Y-%m-01')  # Format as YYYY-MM-01 to match data
     
     # 1. Create a dataframe with category id, month, plannedCashFlowAmount, actualAmount and remainingAmount
 
@@ -69,14 +68,10 @@ def parse_budget_data(budget_data):
     
     budget_amounts_df = pd.DataFrame(budget_amounts_data)
     
-    
-    # 2. Filter to current month only
-    current_month_df = budget_amounts_df[budget_amounts_df['month'] == current_month]
-    
    
     # 3. Left join budget amounts with categories on category_id
     complete_budget_df= categories_df.merge(
-        current_month_df, 
+        budget_amounts_df, 
         on='category_id', 
         how='left'
     )

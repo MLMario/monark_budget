@@ -16,14 +16,6 @@ class DataImportPipeline:
         self.budget_data = None
         self.transaction_data = None
         self.mongo_client = MongoDBClient()
-
-        print("MONARK_USER:", Settings.MONARK_USER)
-        print("MONARK_DD_ID:", Settings.MONARK_DD_ID)
-        print("MONARK_PW is set:", bool(Settings.MONARK_PW))
-        
-        print("MONGO_DB:", Settings.MONGO_DB)
-        print("MONGO_URL is set:", bool(Settings.MONGO_URL))
-
     
     async def run_pipeline(self):
 
@@ -56,11 +48,11 @@ class DataImportPipeline:
 if __name__ == "__main__":
     
     async def main():
-        print("🚀 Starting Data Import Pipeline...")
+        print("Starting Data Import Pipeline...")
         
         pipeline = DataImportPipeline()
         await pipeline.run_pipeline()
 
-        print("✅ Data Pipeline completed successfully!")
+        print("Data Pipeline completed successfully!")
 
     asyncio.run(main())

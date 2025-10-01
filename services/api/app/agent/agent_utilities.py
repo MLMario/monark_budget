@@ -117,11 +117,11 @@ async def call_llm_reasoning(
                 "content": formatted_prompt
             }
         ],
-        temperature=temperature,
-        reasoning_effort=reasoning_effort,
-        max_tokens=max_tokens,
-        reasoning_format=reasoning_format,
-        response_format=  {'type': response_format}
+        temperature = temperature,
+        reasoning_effort = reasoning_effort,
+        max_tokens = max_tokens,
+        reasoning_format = reasoning_format,
+        response_format =  {'type': response_format}
 
     )
     
