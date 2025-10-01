@@ -40,7 +40,7 @@ def parse_budget_data(budget_data):
     categories_df = pd.DataFrame(categories_data)
 
     # 2. Remove rows where excludeFromBudget is True
-    categories_df = categories_df[categories_df["exclude_from_budget"] == False]
+    categories_df = categories_df[~categories_df["exclude_from_budget"]]
 
     # 3. Remove types that are not income or expense
     categories_df = categories_df[

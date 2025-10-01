@@ -9,6 +9,7 @@ from services.api.app.agent.agent_utilities import (
     clean_llm_output,
     extract_json_text,
     filter_overspent_categories,
+    parse_and_validate_transactions,
     task_management,
     validate_html,
 )
@@ -301,36 +302,14 @@ async def import_txn_data_for_period_report_node(
     if not last_month_txn:
         raise ValueError("No transaction data found for the last month period.")
 
-    # This month transactions
+    # Parse and validate transactions using helper function
+    state.current_month_txn = parse_and_validate_transactions(
+        this_month_txn, "No Data, User hasn't done any transaction this month"
+    )
 
-    if this_month_txn:
-        this_month_transactions_list_data = json.loads(this_month_txn)
-
-        pydantic_this_month_transactions_model = [
-            TransactionRow(**txn) for txn in this_month_transactions_list_data
-        ]
-        this_month_txn_dicts = [
-            json.loads(txn.model_dump_json())
-            for txn in pydantic_this_month_transactions_model
-        ]  # Keeping as a list since the LLM model should iterate through each transaction
-        state.current_month_txn = json.dumps(this_month_txn_dicts, indent=2)
-    else:
-        state.current_month_txn = "No Data, User hasn't done any transaction this month"
-
-    if last_month_txn:
-        last_month_transactions_list_data = json.loads(last_month_txn)
-        pydantic_last_month_transactions_model = [
-            TransactionRow(**txn) for txn in last_month_transactions_list_data
-        ]
-        last_month_txn_dicts = [
-            json.loads(txn.model_dump_json())
-            for txn in pydantic_last_month_transactions_model
-        ]  # Keeping as a list since the LLM model should iterate through each transaction
-        state.previous_month_txn = json.dumps(last_month_txn_dicts, indent=2)
-    else:
-        state.previous_month_txn = (
-            "No Data, User hasn't done any transaction last month"
-        )
+    state.previous_month_txn = parse_and_validate_transactions(
+        last_month_txn, "No Data, User hasn't done any transaction last month"
+    )
 
     mongo_client.close_connection()
 

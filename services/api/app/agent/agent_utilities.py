@@ -4,6 +4,7 @@ import smtplib
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from html.parser import HTMLParser
+from typing import Optional
 
 from groq import AsyncGroq
 
@@ -29,8 +30,45 @@ def filter_overspent_categories(budget_json: str) -> str:
     return json.dumps(filtered_data, default=str)
 
 
-def task_management(_state=None):
+def parse_and_validate_transactions(
+    transactions_json: Optional[str], no_data_message: str
+) -> str:
+    """
+    Parse transaction JSON, validate through Pydantic models, and return formatted JSON string.
 
+    This helper function encapsulates the repeated pattern of:
+    1. Parsing JSON string
+    2. Validating each transaction through TransactionRow Pydantic model
+    3. Converting back to JSON format for LLM consumption
+
+    Args:
+        transactions_json: JSON string containing transaction data, or None
+        no_data_message: Message to return if no data available
+
+    Returns:
+        JSON string of validated transactions or no_data_message if None/empty
+    """
+    from services.api.app.agent.state import TransactionRow
+
+    if not transactions_json:
+        return no_data_message
+
+    transactions_list_data = json.loads(transactions_json)
+    pydantic_transactions_model = [
+        TransactionRow(**txn) for txn in transactions_list_data
+    ]
+    txn_dicts = [
+        json.loads(txn.model_dump_json()) for txn in pydantic_transactions_model
+    ]
+    return json.dumps(txn_dicts, indent=2)
+
+
+def task_management(_state=None) -> str:
+    """
+    Determine if period report tasks should run based on current day.
+
+    Returns "both_tasks" if it's Monday or first day of month, otherwise "daily_tasks".
+    """
     today = datetime.now()
     is_monday = today.weekday() == 0  # Monday is 0 and Sunday is 6
 
@@ -42,15 +80,15 @@ def task_management(_state=None):
 
 
 async def call_llm(
-    temperature=0.7,
-    system_prompt=SYSTEM_PROMPT.prompt,
+    temperature: float = 0.7,
+    system_prompt: str = SYSTEM_PROMPT.prompt,
     prompt_obj=None,
-    max_tokens=4020,
-    model=Settings.GROQ_LLAMA_VERSATILE,
-    api_key=Settings.GROQ_API_KEY.get_secret_value(),
-    response_format="text",
+    max_tokens: int = 4020,
+    model: str = Settings.GROQ_LLAMA_VERSATILE,
+    api_key: str = Settings.GROQ_API_KEY.get_secret_value(),
+    response_format: str = "text",
     **kwargs
-):
+) -> str:
 
     client = AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
 
@@ -71,17 +109,17 @@ async def call_llm(
 
 
 async def call_llm_reasoning(
-    temperature=0.7,
-    system_prompt=SYSTEM_PROMPT.prompt,
+    temperature: float = 0.7,
+    system_prompt: str = SYSTEM_PROMPT.prompt,
     prompt_obj=None,
-    max_tokens=4020,
-    model=Settings.GROQ_QWEN_REASONING,
-    api_key=Settings.GROQ_API_KEY.get_secret_value(),
-    reasoning_effort="default",
-    reasoning_format="hidden",
-    response_format="text",
+    max_tokens: int = 4020,
+    model: str = Settings.GROQ_QWEN_REASONING,
+    api_key: str = Settings.GROQ_API_KEY.get_secret_value(),
+    reasoning_effort: str = "default",
+    reasoning_format: str = "hidden",
+    response_format: str = "text",
     **kwargs
-):
+) -> str:
 
     client = AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
 
@@ -151,7 +189,7 @@ class SendEmail:
         self.ADDRESS = Settings.SMTP_USER
         self.PASSWORD = Settings.SMTP_PASSWORD.get_secret_value()
 
-    async def send_email_async(self, is_html=False):
+    async def send_email_async(self, is_html: bool = False) -> None:
 
         msg = EmailMessage()
         msg["Subject"] = self.subject
@@ -171,18 +209,19 @@ class SendEmail:
             server.login(self.ADDRESS, self.PASSWORD)
             server.send_message(msg)
 
+
 class HTMLValidator(HTMLParser):
     def __init__(self):
         super().__init__()
-        self.valid_html = True
-        self.error_msg = ""
+        self.valid_html: bool = True
+        self.error_msg: str = ""
 
-    def error(self, message):
+    def error(self, message: str) -> None:
         self.valid_html = False
         self.error_msg = message
 
 
-def validate_html(text: str) -> str:
+def validate_html(text: str) -> tuple[str, bool]:
     """
     Check if the input text is valid HTML. If valid, return as-is.
     If invalid or plain text, return the original string.
@@ -204,6 +243,6 @@ def validate_html(text: str) -> str:
         else:
 
             return text, False
-    except Exception as exc:
+    except Exception:
 
         return text, False

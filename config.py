@@ -33,25 +33,18 @@ class Settings(BaseSettings):
     )
 
     MONARK_PW: SecretStr = Field(
-        description="Password used to extract transaction data and budget data",
-        env="MONARK_PW",
+        description="Password used to extract transaction data and budget data"
     )
 
-    MONARK_USER: str = Field(
-        description="Email to access Monark account", env="MONARK_USER"
-    )
+    MONARK_USER: str = Field(description="Email to access Monark account")
 
-    MONARK_DD_ID: SecretStr = Field(
-        description="Device ID for the Monark account", env="MONARK_DD_ID"
-    )
+    MONARK_DD_ID: SecretStr = Field(description="Device ID for the Monark account")
 
-    MONGO_URL: SecretStr = Field(
-        description="MongoDB connection string", env="MONGO_URL"
-    )
+    MONGO_URL: SecretStr = Field(description="MongoDB connection string")
 
-    MONGO_DB: str = Field(description="MongoDB database name", env="MONGO_DB")
+    MONGO_DB: str = Field(description="MongoDB database name")
 
-    GROQ_API_KEY: SecretStr = Field(description="API key for Groq", env="GROQ_API_KEY")
+    GROQ_API_KEY: SecretStr = Field(description="API key for Groq")
 
     GROQ_LLAMA_VERSATILE: str = Field(default="llama-3.3-70b-versatile")
 
@@ -61,11 +54,9 @@ class Settings(BaseSettings):
 
     GROQ_OPENAI_20B_MODE: str = Field(default="openai/gpt-oss-20b")
 
-    SMTP_USER: str = Field(description="SMTP user for sending emails", env="SMTP_USER")
+    SMTP_USER: str = Field(description="SMTP user for sending emails")
 
-    SMTP_PASSWORD: SecretStr = Field(
-        description="SMTP password for sending emails", env="SMTP_PASSWORD"
-    )
+    SMTP_PASSWORD: SecretStr = Field(description="SMTP password for sending emails")
 
 
 Settings = Settings()
