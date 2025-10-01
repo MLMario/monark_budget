@@ -124,14 +124,11 @@ SUSPICIOUS_TXN_STORY_PROMPT = Prompt(
 # ...existing code...
 __TXN_ANALYSIS_PROMPT = """
 
-You will receive transactions for a single category, split by month.
+You will receive transactions for a single category.
 Do not add any extraneous commentary — respond with the two sections requested below.
 
-Last month transactions:
-{last_month_txn}
-
-This month transactions:
-{this_month_txn}
+Transaction data:
+{transaction_data}
 
 Respond with two clearly separated sections (use the exact headings below). Keep your response actionable and concise (<= 200 words). Use bullet points where appropriate.
 

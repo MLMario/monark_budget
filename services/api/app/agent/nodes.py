@@ -397,8 +397,7 @@ async def eow_period_report_node(state: BudgetAgentState) -> BudgetAgentState:
                 model = Settings.GROQ_OPENAI_20B_MODE,
                 temperature = 0.8,
                 prompt_obj = TXN_ANALYSIS_PROMPT,
-                this_month_txn = current_month_category_txn,
-                last_month_txn = "No previous month data for EOW report",
+                transaction_data = current_month_category_txn,
                 max_tokens=500,
                 reasoning_effort='high',
                 reasoning_format='hidden'
@@ -484,8 +483,7 @@ async def eom_period_report_node(state: BudgetAgentState) -> BudgetAgentState:
                 model = Settings.GROQ_OPENAI_20B_MODE,
                 temperature = 0.8,
                 prompt_obj = TXN_ANALYSIS_PROMPT,
-                this_month_txn = "No current month data for EOM report",
-                last_month_txn = previous_month_category_txn,
+                transaction_data = previous_month_category_txn,
                 max_tokens=500,
                 reasoning_effort='high',
                 reasoning_format='hidden'
