@@ -2926,7 +2926,11 @@ class MonarchMoney(object):
                         else:
                             error_message = f"Unrecognized error message: '{response}'"
                         raise LoginFailedException(error_message)
-                    except:
+                    except (RequireMFAException, LoginFailedException):
+                        # Re-raise our custom exceptions
+                        raise
+                    except Exception:
+                        # Catch JSON parsing errors or other unexpected errors
                         raise LoginFailedException(
                             f"HTTP Code {resp.status}: {resp.reason}\nRaw response: {resp.text}"
                         )

@@ -39,25 +39,46 @@ def _build_initial_state() -> BudgetAgentState:
 
 
 async def run_agent() -> BudgetAgentState:
-    graph = create_budget_graph()
-    app = graph.compile()
+    """
+    Run the budget agent graph with error handling.
 
-    initial_state = _build_initial_state()
-    logging.info("Starting agent run with run_id=%s", initial_state.run_meta.run_id)
+    Returns:
+        Final agent state
 
-    result = await app.ainvoke(initial_state)
-    if not isinstance(result, BudgetAgentState):
-        result = BudgetAgentState.model_validate(result)
+    Raises:
+        Exception: On unrecoverable agent execution failures
+    """
+    try:
+        graph = create_budget_graph()
+        app = graph.compile()
 
-    logging.info(
-        "Agent completed; task route=%s, flags=%s",
-        result.task_info,
-        result.process_flag.model_dump(),
-    )
-    return result
+        initial_state = _build_initial_state()
+        logging.info("Starting agent run with run_id=%s", initial_state.run_meta.run_id)
+
+        result = await app.ainvoke(initial_state)
+        if not isinstance(result, BudgetAgentState):
+            result = BudgetAgentState.model_validate(result)
+
+        logging.info(
+            "Agent completed; task route=%s, flags=%s",
+            result.task_info,
+            result.process_flag.model_dump(),
+        )
+        return result
+    except Exception as exc:
+        logging.error("Agent execution failed: %s", exc, exc_info=True)
+        raise
 
 
 def main() -> None:
+    """
+    Main entry point with comprehensive error handling.
+
+    Implements graceful degradation:
+    - Catches keyboard interrupts for clean shutdown
+    - Logs all errors with stack traces
+    - Provides user-friendly error messages
+    """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
@@ -66,6 +87,12 @@ def main() -> None:
         final_state = asyncio.run(run_agent())
     except KeyboardInterrupt:  # pragma: no cover - interactive convenience
         logging.warning("Agent run interrupted by user")
+        return
+    except Exception as exc:
+        logging.error("Fatal error during agent run: %s", exc, exc_info=True)
+        print("\n=== Agent run FAILED ===")
+        print(f"Error: {exc}")
+        print("Check logs for details.")
         return
 
     email_info = final_state.email_info

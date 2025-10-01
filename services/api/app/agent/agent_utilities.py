@@ -7,9 +7,21 @@ from html.parser import HTMLParser
 from typing import Optional
 
 from groq import AsyncGroq
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from config import Settings
 from services.api.app.domain.prompts import SYSTEM_PROMPT
+from services.api.app.exceptions import (
+    EmailError,
+    LLMError,
+    LLMResponseError,
+    LLMTimeoutError,
+)
 
 
 def filter_overspent_categories(budget_json: str) -> str:
@@ -79,6 +91,12 @@ def task_management(_state=None) -> str:
     return "both_tasks" if (is_monday or is_first_day_of_month) else "daily_tasks"
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((LLMError, LLMTimeoutError)),
+    reraise=True,
+)
 async def call_llm(
     temperature: float = 0.7,
     system_prompt: str = SYSTEM_PROMPT.prompt,
@@ -87,27 +105,70 @@ async def call_llm(
     model: str = Settings.GROQ_LLAMA_VERSATILE,
     api_key: str = Settings.GROQ_API_KEY.get_secret_value(),
     response_format: str = "text",
+    timeout: int = 60,
     **kwargs
 ) -> str:
+    """
+    Call LLM API with retry logic and timeout handling.
 
-    client = AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
+    Args:
+        temperature: Sampling temperature (0-1)
+        system_prompt: System prompt for the LLM
+        prompt_obj: Prompt object with .prompt attribute
+        max_tokens: Maximum tokens to generate
+        model: Model identifier
+        api_key: API key for authentication
+        response_format: Response format (text or json_object)
+        timeout: Request timeout in seconds (default: 60)
+        **kwargs: Additional parameters to format the prompt
 
-    formatted_prompt = prompt_obj.prompt.format(**kwargs)
+    Returns:
+        LLM response content
 
-    completion = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": formatted_prompt},
-        ],
-        temperature=temperature,
-        max_tokens=max_tokens,
-        response_format={"type": response_format},
-    )
+    Raises:
+        LLMError: On LLM API failures
+        LLMTimeoutError: On timeout
+        LLMResponseError: On invalid response format
+    """
+    try:
+        client = AsyncGroq(
+            api_key=Settings.GROQ_API_KEY.get_secret_value(), timeout=timeout
+        )
 
-    return completion.choices[0].message.content
+        formatted_prompt = prompt_obj.prompt.format(**kwargs)
+
+        completion = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": formatted_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": response_format},
+        )
+
+        if not completion.choices or not completion.choices[0].message.content:
+            raise LLMResponseError("LLM returned empty response")
+
+        return completion.choices[0].message.content
+
+    except TimeoutError as exc:
+        raise LLMTimeoutError(f"LLM request timed out after {timeout}s") from exc
+    except (LLMError, LLMTimeoutError, LLMResponseError):
+        # Re-raise our custom exceptions without wrapping
+        raise
+    except Exception as exc:
+        # Catch all other exceptions and wrap as LLMError for retry logic
+        raise LLMError(f"LLM API call failed: {exc}") from exc
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((LLMError, LLMTimeoutError)),
+    reraise=True,
+)
 async def call_llm_reasoning(
     temperature: float = 0.7,
     system_prompt: str = SYSTEM_PROMPT.prompt,
@@ -118,27 +179,66 @@ async def call_llm_reasoning(
     reasoning_effort: str = "default",
     reasoning_format: str = "hidden",
     response_format: str = "text",
+    timeout: int = 90,
     **kwargs
 ) -> str:
+    """
+    Call LLM reasoning API with retry logic and timeout handling.
 
-    client = AsyncGroq(api_key=Settings.GROQ_API_KEY.get_secret_value())
+    Args:
+        temperature: Sampling temperature (0-1)
+        system_prompt: System prompt for the LLM
+        prompt_obj: Prompt object with .prompt attribute
+        max_tokens: Maximum tokens to generate
+        model: Model identifier
+        api_key: API key for authentication
+        reasoning_effort: Reasoning effort level
+        reasoning_format: Reasoning format (hidden/visible)
+        response_format: Response format (text or json_object)
+        timeout: Request timeout in seconds (default: 90, higher for reasoning)
+        **kwargs: Additional parameters to format the prompt
 
-    formatted_prompt = prompt_obj.prompt.format(**kwargs)
+    Returns:
+        LLM response content
 
-    completion = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": formatted_prompt},
-        ],
-        temperature=temperature,
-        reasoning_effort=reasoning_effort,
-        max_tokens=max_tokens,
-        reasoning_format=reasoning_format,
-        response_format={"type": response_format},
-    )
+    Raises:
+        LLMError: On LLM API failures
+        LLMTimeoutError: On timeout
+        LLMResponseError: On invalid response format
+    """
+    try:
+        client = AsyncGroq(
+            api_key=Settings.GROQ_API_KEY.get_secret_value(), timeout=timeout
+        )
 
-    return completion.choices[0].message.content
+        formatted_prompt = prompt_obj.prompt.format(**kwargs)
+
+        completion = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": formatted_prompt},
+            ],
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
+            reasoning_format=reasoning_format,
+            response_format={"type": response_format},
+        )
+
+        if not completion.choices or not completion.choices[0].message.content:
+            raise LLMResponseError("LLM returned empty response")
+
+        return completion.choices[0].message.content
+
+    except TimeoutError as exc:
+        raise LLMTimeoutError(f"LLM request timed out after {timeout}s") from exc
+    except (LLMError, LLMTimeoutError, LLMResponseError):
+        # Re-raise our custom exceptions without wrapping
+        raise
+    except Exception as exc:
+        # Catch all other exceptions and wrap as LLMError for retry logic
+        raise LLMError(f"LLM API call failed: {exc}") from exc
 
 
 def clean_llm_output(raw_text: str) -> str:
@@ -189,25 +289,47 @@ class SendEmail:
         self.ADDRESS = Settings.SMTP_USER
         self.PASSWORD = Settings.SMTP_PASSWORD.get_secret_value()
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(EmailError),
+        reraise=True,
+    )
     async def send_email_async(self, is_html: bool = False) -> None:
+        """
+        Send email with retry logic.
 
-        msg = EmailMessage()
-        msg["Subject"] = self.subject
-        msg["From"] = self.from_
-        msg["To"] = self.to
+        Args:
+            is_html: Whether the email body is HTML
 
-        if not is_html:
-            msg.set_content(self.body)
-        else:
-            msg.add_alternative(self.body, subtype="html")
+        Raises:
+            EmailError: On email sending failures after retries
+        """
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = self.subject
+            msg["From"] = self.from_
+            msg["To"] = self.to
 
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.ehlo()
-            server.starttls()  # upgrade the connection to TLS
-            server.ehlo()
+            if not is_html:
+                msg.set_content(self.body)
+            else:
+                msg.add_alternative(self.body, subtype="html")
 
-            server.login(self.ADDRESS, self.PASSWORD)
-            server.send_message(msg)
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+                server.ehlo()
+                server.starttls()  # upgrade the connection to TLS
+                server.ehlo()
+
+                server.login(self.ADDRESS, self.PASSWORD)
+                server.send_message(msg)
+
+        except smtplib.SMTPException as exc:
+            raise EmailError(f"SMTP error sending email: {exc}") from exc
+        except TimeoutError as exc:
+            raise EmailError(f"Email sending timed out: {exc}") from exc
+        except Exception as exc:
+            raise EmailError(f"Failed to send email: {exc}") from exc
 
 
 class HTMLValidator(HTMLParser):
