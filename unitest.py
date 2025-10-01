@@ -117,8 +117,8 @@ SAMPLE_LAST_DAY_TRANSACTIONS = [
     }
 ]
 
-CURRENT_OVERSPEND_JSON = json.dumps(SAMPLE_CURRENT_MONTH_BUDGET_ROWS)
-PAST_OVERSPEND_JSON = json.dumps(SAMPLE_PAST_MONTH_BUDGET_ROWS)
+CURRENT_OVERSPEND_JSON = json.dumps({"overspend_categories": SAMPLE_CURRENT_MONTH_BUDGET_ROWS})
+PAST_OVERSPEND_JSON = json.dumps({"overspend_categories": SAMPLE_PAST_MONTH_BUDGET_ROWS})
 FAKE_ALERT_TEXT = "Overspend alert: Dining Out over plan by $150.00."
 FAKE_PERIOD_REPORT_TEXT = "Period report with spending analysis and recommendations."
 
@@ -305,6 +305,24 @@ def test_task_management_eom_priority(monkeypatch):
 @pytest.mark.anyio("asyncio")
 async def test_import_data_node_imports_both_months(monkeypatch, fake_mongo_client):
     """Test that import_data_node imports both current and past month budget data."""
+    # Mock datetime
+    fake_today = datetime(2024, 5, 4, 10, 0, 0)
+
+    class FakeDatetime:
+        @staticmethod
+        def now():
+            return fake_today
+
+        @staticmethod
+        def strftime(fmt):
+            return fake_today.strftime(fmt)
+
+        def __new__(cls, *args, **kwargs):
+            if args:
+                return datetime(*args, **kwargs)
+            return fake_today
+
+    monkeypatch.setattr("services.api.app.agent.nodes.datetime", FakeDatetime)
     monkeypatch.setattr(
         "services.api.app.agent.nodes.AsyncMongoDBClient",
         lambda: fake_mongo_client,
@@ -384,6 +402,24 @@ async def test_import_data_node_no_overspend(monkeypatch, fake_mongo_client):
 @pytest.mark.anyio("asyncio")
 async def test_import_current_month_txn_node(monkeypatch, fake_mongo_client):
     """Test import_current_month_txn_node imports current month transactions."""
+    # Mock datetime
+    fake_today = datetime(2024, 5, 6, 10, 0, 0)
+
+    class FakeDatetime:
+        @staticmethod
+        def now():
+            return fake_today
+
+        @staticmethod
+        def strftime(fmt):
+            return fake_today.strftime(fmt)
+
+        def __new__(cls, *args, **kwargs):
+            if args:
+                return datetime(*args, **kwargs)
+            return fake_today
+
+    monkeypatch.setattr("services.api.app.agent.nodes.datetime", FakeDatetime)
     monkeypatch.setattr(
         "services.api.app.agent.nodes.AsyncMongoDBClient",
         lambda: fake_mongo_client,
@@ -432,6 +468,24 @@ async def test_import_current_month_txn_node_no_data(monkeypatch):
 @pytest.mark.anyio("asyncio")
 async def test_import_previous_month_txn_node(monkeypatch, fake_mongo_client):
     """Test import_previous_month_txn_node imports previous month transactions."""
+    # Mock datetime
+    fake_today = datetime(2024, 5, 1, 10, 0, 0)
+
+    class FakeDatetime:
+        @staticmethod
+        def now():
+            return fake_today
+
+        @staticmethod
+        def strftime(fmt):
+            return fake_today.strftime(fmt)
+
+        def __new__(cls, *args, **kwargs):
+            if args:
+                return datetime(*args, **kwargs)
+            return fake_today
+
+    monkeypatch.setattr("services.api.app.agent.nodes.datetime", FakeDatetime)
     monkeypatch.setattr(
         "services.api.app.agent.nodes.AsyncMongoDBClient",
         lambda: fake_mongo_client,
