@@ -35,7 +35,13 @@ def task_management(_state=None):
 
     is_first_day_of_month = today.month != yesterday.month
 
-    return "both_tasks" if (is_monday or is_first_day_of_month) else "daily_tasks"
+    # EOM takes precedence over EOW
+    if is_first_day_of_month:
+        return "eom_tasks"
+    elif is_monday:
+        return "eow_tasks"
+    else:
+        return "daily_tasks"
 
 def is_first_day_of_month(state=None) -> bool:
     today = datetime.now()

@@ -68,41 +68,80 @@ logger = logging.getLogger(__name__)
 
 async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
 
-    #Create MongoDB Client to Import Data 
-    mongo_client = AsyncMongoDBClient() 
-    budget_json = await mongo_client.import_budget_data(filter_query={'category_group_type': 'expense'})
-    
+    #Create MongoDB Client to Import Data
+    mongo_client = AsyncMongoDBClient()
+
+    # Calculate current month and past month dates
+    today = datetime.now()
+    current_month_start = today.replace(day=1)
+    current_month_str = current_month_start.strftime('%Y-%m-%d')
+
+    # Calculate first day of previous month
+    if today.month == 1:
+        past_month_start = datetime(today.year - 1, 12, 1)
+    else:
+        past_month_start = datetime(today.year, today.month - 1, 1)
+    past_month_str = past_month_start.strftime('%Y-%m-%d')
+
+    # Import current month budget data
+    logger.info("Importing Current Month Budget Data from MongoDB [START]")
+    current_budget_json = await mongo_client.import_budget_data(month=current_month_str, filter_query={'category_group_type': 'expense'})
+
     # Data Model Validation Processing (Implicit given the use of Pydantic models)
-    budget_list_data = json.loads(budget_json)
-    budget_rows = [BudgetRow(**row) for row in budget_list_data]
-    pydantic_budget_model = BudgetData(current_month_budget=budget_rows)
-    state.current_month_budget = pydantic_budget_model.model_dump_json()
-    logger.info("Importing Budget Data from MongoDB [DONE]")
+    current_budget_list_data = json.loads(current_budget_json)
+    current_budget_rows = [BudgetRow(**row) for row in current_budget_list_data]
+    pydantic_current_budget_model = BudgetData(current_month_budget=current_budget_rows)
+    state.current_month_budget = pydantic_current_budget_model.model_dump_json()
+    logger.info("Importing Current Month Budget Data from MongoDB [DONE]")
 
+    # Import past month budget data
+    logger.info("Importing Past Month Budget Data from MongoDB [START]")
+    past_budget_json = await mongo_client.import_budget_data(month=past_month_str, filter_query={'category_group_type': 'expense'})
 
-    logger.info("Filtering Overspent Categories [START]")
+    # Data Model Validation Processing (Implicit given the use of Pydantic models)
+    past_budget_list_data = json.loads(past_budget_json)
+    past_budget_rows = [BudgetRow(**row) for row in past_budget_list_data]
+    pydantic_past_budget_model = BudgetData(current_month_budget=past_budget_rows)
+    state.past_month_budget = pydantic_past_budget_model.model_dump_json()
+    logger.info("Importing Past Month Budget Data from MongoDB [DONE]")
 
-    overspend_json = filter_overspent_categories(budget_json) 
+    # Filter overspent categories for current month
+    logger.info("Filtering Overspent Categories for Current Month [START]")
+    current_overspend_json = filter_overspent_categories(current_budget_json)
 
-    if not overspend_json:
-        state.overspend_budget_data = "No Data, User hasn't overspent"
+    if not current_overspend_json:
+        state.current_month_overspend_budget_data = "No Data, User hasn't overspent"
     else:
         # Data Model Validation Processing (Implicit given the use of Pydantic models)
-        overspend_list_data = json.loads(overspend_json)
-        overspend_rows = [BudgetRow(**row) for row in overspend_list_data]
-        pydantic_overspend_budget_model = OverspendBudgetData(overspend_categories=overspend_rows)
+        current_overspend_list_data = json.loads(current_overspend_json)
+        current_overspend_rows = [BudgetRow(**row) for row in current_overspend_list_data]
+        pydantic_current_overspend_budget_model = OverspendBudgetData(overspend_categories=current_overspend_rows)
 
         # we want the budget data as one json string so that model can look at it all at once, it will not evaluate each category but make an alert message summary
-        state.overspend_budget_data = pydantic_overspend_budget_model.model_dump_json()
-    logger.info("Filtering Overspent Categories [DONE]")
+        state.current_month_overspend_budget_data = pydantic_current_overspend_budget_model.model_dump_json()
+    logger.info("Filtering Overspent Categories for Current Month [DONE]")
 
+    # Filter overspent categories for past month
+    logger.info("Filtering Overspent Categories for Past Month [START]")
+    past_overspend_json = filter_overspent_categories(past_budget_json)
+
+    if not past_overspend_json:
+        state.past_month_overspend_budget_data = "No Data, User hasn't overspent"
+    else:
+        # Data Model Validation Processing (Implicit given the use of Pydantic models)
+        past_overspend_list_data = json.loads(past_overspend_json)
+        past_overspend_rows = [BudgetRow(**row) for row in past_overspend_list_data]
+        pydantic_past_overspend_budget_model = OverspendBudgetData(overspend_categories=past_overspend_rows)
+
+        state.past_month_overspend_budget_data = pydantic_past_overspend_budget_model.model_dump_json()
+    logger.info("Filtering Overspent Categories for Past Month [DONE]")
 
     logger.info("Importing Last Day Transaction Data from MongoDB [START]")
 
     last_day_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
 
     transactions_json = await mongo_client.import_transaction_data(start_date=last_day_date, end_date=last_day_date)
-    
+
     # Convert JSON string to TransactionRow objects
     transactions_list_data = json.loads(transactions_json)
     pydantic_transactions_model = [TransactionRow(**txn) for txn in transactions_list_data]
@@ -113,9 +152,16 @@ async def import_data_node(state: BudgetAgentState) -> BudgetAgentState:
 
     return state
 
-#it just so that it re-route tasks depending on the day
+#it re-routes tasks depending on the day: EOW (Monday), EOM (first day of month), or regular daily tasks
 async def coordinator_node(state: BudgetAgentState) -> BudgetAgentState:
+    """
+    Coordinator node that determines which workflow to execute:
+    - "daily_tasks": Regular daily alerts only
+    - "eow_tasks": End of Week report (Mondays) - analyzes current month overspend
+    - "eom_tasks": End of Month report (first day of month) - analyzes previous month overspend
 
+    Priority: EOM > EOW > Daily (if both EOW and EOM, EOM takes precedence)
+    """
 
     state.task_info = task_management()
 
@@ -123,7 +169,7 @@ async def coordinator_node(state: BudgetAgentState) -> BudgetAgentState:
 
 async def daily_overspend_alert_node(state: BudgetAgentState) -> BudgetAgentState:
 
-    overspend_budget_data = state.overspend_budget_data
+    overspend_budget_data = state.current_month_overspend_budget_data
 
     response_text = await call_llm(
         temperature=0.8,
@@ -239,121 +285,120 @@ async def daily_suspicious_transaction_alert_node(state: BudgetAgentState) -> Bu
         return state
     
 
-async def import_txn_data_for_period_report_node(state: BudgetAgentState) -> BudgetAgentState:
+async def import_current_month_txn_node(state: BudgetAgentState) -> BudgetAgentState:
+    """
+    Imports current month transaction data for EOW (End of Week) report.
+    Date range: First day of current month to yesterday.
+    Updates state.current_month_txn only.
+    """
 
-    
-    mongo_client = AsyncMongoDBClient() 
+    mongo_client = AsyncMongoDBClient()
 
-    logger.info("Importing Last Day Transaction Data from MongoDB [START]")
+    logger.info("Importing Current Month Transaction Data for EOW Report [START]")
 
-    last_day = datetime.now() - timedelta(days=1)
+    today = datetime.now()
+    last_day = today - timedelta(days=1)
     last_day_date = last_day.strftime('%Y-%m-%d')
 
-    start_month= last_day.replace(day=1)
+    start_month = today.replace(day=1)
     start_month_date = start_month.strftime('%Y-%m-%d')
 
     this_month_txn = await mongo_client.import_transaction_data(start_date=start_month_date, end_date=last_day_date)
-    
+
+    if  this_month_txn:
+        this_month_transactions_list_data = json.loads(this_month_txn)
+
+        pydantic_this_month_transactions_model = [TransactionRow(**txn) for txn in this_month_transactions_list_data]
+        this_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_this_month_transactions_model]
+        state.current_month_txn = json.dumps(this_month_txn_dicts, indent=2)
+        logger.info("Importing Current Month Transaction Data for EOW Report [DONE]")
+    else:
+        state.current_month_txn = "No Data, User hasn't done any transaction this month"
+        logger.warning("No current month transaction data found")
+
+    mongo_client.close_connection()
+
+    return state
+
+
+async def import_previous_month_txn_node(state: BudgetAgentState) -> BudgetAgentState:
+    """
+    Imports previous month transaction data for EOM (End of Month) report.
+    Date range: First day to last day of previous month.
+    Updates state.previous_month_txn only.
+    """
+
+    mongo_client = AsyncMongoDBClient()
+
+    logger.info("Importing Previous Month Transaction Data for EOM Report [START]")
+
+    today = datetime.now()
+    start_month = today.replace(day=1)
+
     last_month_end = start_month - timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
 
     last_month_start_date = last_month_start.strftime('%Y-%m-%d')
     last_month_end_date = last_month_end.strftime('%Y-%m-%d')
 
-    this_month_txn = await mongo_client.import_transaction_data(start_date=start_month_date, end_date=last_day_date)
     last_month_txn = await mongo_client.import_transaction_data(start_date=last_month_start_date, end_date=last_month_end_date)
-
-    if not this_month_txn:
-        raise ValueError("No transaction data found for the this month period.")
-
-    if not last_month_txn:
-        raise ValueError("No transaction data found for the last month period.")
-    
-    # This month transactions
-
-    if  this_month_txn:
-        this_month_transactions_list_data = json.loads(this_month_txn)
-
-        pydantic_this_month_transactions_model = [TransactionRow(**txn) for txn in this_month_transactions_list_data]
-        this_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_this_month_transactions_model] # Keeping as a list since the LLM model should iterate through each transaction
-        state.current_month_txn = json.dumps(this_month_txn_dicts, indent=2)
-    else:
-        state.current_month_txn = "No Data, User hasn't done any transaction this month"
 
     if last_month_txn:
         last_month_transactions_list_data = json.loads(last_month_txn)
         pydantic_last_month_transactions_model = [TransactionRow(**txn) for txn in last_month_transactions_list_data]
-        last_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_last_month_transactions_model] # Keeping as a list since the LLM model should iterate through each transaction
+        last_month_txn_dicts = [json.loads(txn.model_dump_json()) for txn in pydantic_last_month_transactions_model]
         state.previous_month_txn = json.dumps(last_month_txn_dicts, indent=2)
+        logger.info("Importing Previous Month Transaction Data for EOM Report [DONE]")
     else:
         state.previous_month_txn = "No Data, User hasn't done any transaction last month"
-   
+        logger.warning("No previous month transaction data found")
+
     mongo_client.close_connection()
-    
+
     return state
 
-async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
-    """ 
-    - Input: current_month_budget, current_month_txn, previous_month_txn from state
-    - Action:
-         LLM Loops through  OverspendBudgetData.overspend_categories, create a report_category instance, 
-         from previous and current month transactions it fetches all transaction of the same category
-    - Output: Updates state period_report instance (period = "month", categories_in_report = [...], report_summary = "...", drivers = "...", recommended_actions = "...", report_funny_quip = "...")
-    
+async def eow_period_report_node(state: BudgetAgentState) -> BudgetAgentState:
+    """
+    End of Week (EOW) Period Report Node - Analyzes current month overspending.
+
+    - Input: current_month_overspend_budget_data, current_month_txn from state
+    - Action: LLM analyzes each overspent category from current month with current month transactions only
+    - Output: Updates state.period_report with EOW analysis
     - Updates process_flag.period_report_done = True
-    
     """
 
     analysis_responses = []
 
-    if state.overspend_budget_data != "No Data, User hasn't overspent":
+    if state.current_month_overspend_budget_data != "No Data, User hasn't overspent":
 
-        over_spend_budget = json.loads(state.overspend_budget_data).get("overspend_categories","")
+        over_spend_budget = json.loads(state.current_month_overspend_budget_data).get("overspend_categories","")
 
         if state.current_month_txn != "No Data, User hasn't done any transaction this month":
-
             current_month_txn = json.loads(state.current_month_txn)
             is_cmtxn_present = True
         else:
-            # current_month_txn = "No Data, User hasn't done any transaction this month" in this case
             current_month_txn = state.current_month_txn
             is_cmtxn_present = False
 
-        if state.previous_month_txn != "No Data, User hasn't done any transaction last month":
-            previous_month_txn = json.loads(state.previous_month_txn)
-            is_pmtxn_present = True
-        else:
-            #same logic as current month txn
-            previous_month_txn = state.previous_month_txn
-            is_pmtxn_present = False
-        
-
-        
         for record in over_spend_budget:
 
-            logger.info("Processing category: %s", record.get('category_name'))
+            logger.info("EOW Report: Processing category: %s", record.get('category_name'))
 
             category_name = record.get('category_name')
-            logger.info("Period Report Task: Starting Analysis of Category %s", record.get('category_name'))
+            logger.info("EOW Report: Starting Analysis of Category %s", record.get('category_name'))
 
             # Filter transactions for the current category
-            if  is_cmtxn_present:
+            if is_cmtxn_present:
                 current_month_category_txn = json.dumps([txn_record for txn_record in current_month_txn if txn_record.get('category_name') == category_name], indent=2)
             else:
                 current_month_category_txn = current_month_txn
-
-            if is_pmtxn_present:    
-               previous_month_category_txn = json.dumps([txn_record for txn_record in previous_month_txn if txn_record.get('category_name') == category_name], indent=2)
-            else:
-               previous_month_category_txn = previous_month_txn
-
 
             response_text = await call_llm_reasoning(
                 model = Settings.GROQ_OPENAI_20B_MODE,
                 temperature = 0.8,
                 prompt_obj = TXN_ANALYSIS_PROMPT,
                 this_month_txn = current_month_category_txn,
-                last_month_txn = previous_month_category_txn,
+                last_month_txn = "No previous month data for EOW report",
                 max_tokens=500,
                 reasoning_effort='high',
                 reasoning_format='hidden'
@@ -361,8 +406,8 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
 
             response_text_cleaned = clean_llm_output(response_text)
 
-            logger.info("Period Report Task: Category Analysis Complete for %s", record.get('category_name'))
-            logger.info("Period Report Task: LLM Category Analysis Response: %s", response_text_cleaned)
+            logger.info("EOW Report: Category Analysis Complete for %s", record.get('category_name'))
+            logger.info("EOW Report: LLM Category Analysis Response: %s", response_text_cleaned)
 
             #model validation and processing
             response_model = ReportCategory(
@@ -383,7 +428,7 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
             model = Settings.GROQ_OPENAI_20B_MODE,
             temperature = 0.8,
             prompt_obj=PERIOD_REPORT_PROMPT,
-            max_tokens= 4020 ,
+            max_tokens= 4020,
             periodo_report_data_input = periodo_report_data_input,
             reasoning_effort='high',
             reasoning_format = 'hidden'
@@ -393,8 +438,94 @@ async def period_report_node(state: BudgetAgentState) -> BudgetAgentState:
         state.process_flag.period_report_done = True
 
     else:
-        state.period_report = "Good Job! You haven't overspent in any category this period, keep it up!"
+        state.period_report = "Good Job! You haven't overspent in any category this week, keep it up!"
+        state.process_flag.period_report_done = True
 
+    return state
+
+
+async def eom_period_report_node(state: BudgetAgentState) -> BudgetAgentState:
+    """
+    End of Month (EOM) Period Report Node - Analyzes previous month overspending.
+
+    - Input: past_month_overspend_budget_data, previous_month_txn from state
+    - Action: LLM analyzes each overspent category from previous month with previous month transactions
+    - Output: Updates state.period_report with EOM analysis
+    - Updates process_flag.period_report_done = True
+    """
+
+    analysis_responses = []
+
+    if state.past_month_overspend_budget_data != "No Data, User hasn't overspent":
+
+        over_spend_budget = json.loads(state.past_month_overspend_budget_data).get("overspend_categories","")
+
+        if state.previous_month_txn != "No Data, User hasn't done any transaction last month":
+            previous_month_txn = json.loads(state.previous_month_txn)
+            is_pmtxn_present = True
+        else:
+            previous_month_txn = state.previous_month_txn
+            is_pmtxn_present = False
+
+        for record in over_spend_budget:
+
+            logger.info("EOM Report: Processing category: %s", record.get('category_name'))
+
+            category_name = record.get('category_name')
+            logger.info("EOM Report: Starting Analysis of Category %s", record.get('category_name'))
+
+            # Filter transactions for the category
+            if is_pmtxn_present:
+               previous_month_category_txn = json.dumps([txn_record for txn_record in previous_month_txn if txn_record.get('category_name') == category_name], indent=2)
+            else:
+               previous_month_category_txn = previous_month_txn
+
+            response_text = await call_llm_reasoning(
+                model = Settings.GROQ_OPENAI_20B_MODE,
+                temperature = 0.8,
+                prompt_obj = TXN_ANALYSIS_PROMPT,
+                this_month_txn = "No current month data for EOM report",
+                last_month_txn = previous_month_category_txn,
+                max_tokens=500,
+                reasoning_effort='high',
+                reasoning_format='hidden'
+            )
+
+            response_text_cleaned = clean_llm_output(response_text)
+
+            logger.info("EOM Report: Category Analysis Complete for %s", record.get('category_name'))
+            logger.info("EOM Report: LLM Category Analysis Response: %s", response_text_cleaned)
+
+            #model validation and processing
+            response_model = ReportCategory(
+                category_budget_variability=record.get("category_budget_variability"),
+                category_name=category_name,
+                category_group_name=record.get("category_group_name"),
+                overspent_amount=record.get("remaining_amount", 0) * -1,  # Convert to positive overspend amount
+                llm_response=response_text_cleaned
+            )
+
+            analysis_responses.append(response_model)
+
+        periodo_report_data_input = json.dumps([json.loads(ReportCategory.model_dump_json(response)) for response in analysis_responses], indent=2)
+
+        print(periodo_report_data_input)
+
+        response_period_report = await call_llm_reasoning(
+            model = Settings.GROQ_OPENAI_20B_MODE,
+            temperature = 0.8,
+            prompt_obj=PERIOD_REPORT_PROMPT,
+            max_tokens= 4020,
+            periodo_report_data_input = periodo_report_data_input,
+            reasoning_effort='high',
+            reasoning_format = 'hidden'
+        )
+
+        state.period_report = response_period_report
+        state.process_flag.period_report_done = True
+
+    else:
+        state.period_report = "Good Job! You haven't overspent in any category last month, keep it up!"
         state.process_flag.period_report_done = True
 
     return state 

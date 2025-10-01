@@ -33,14 +33,17 @@ class AsyncMongoDBClient:
         self.budgets_collection = self.db['budget']
         self.transactions_collection = self.db['transactions']
 
-    async def import_budget_data(self, filter_query: Optional[dict] = None):
+    async def import_budget_data(self, month: str, filter_query: Optional[dict] = None):
 
         if filter_query is None:
             filter_query = {}
 
+        # Add month filter to the query
+        filter_query['month'] = month
+
         cursor = self.budgets_collection.find(filter_query, {"_id": 0})  # Exclude MongoDB _id field
         documents = await cursor.to_list(length=None)  # Get all documents
-        
+
         return json.dumps(documents, default=str)
 
     async def import_transaction_data(self, start_date: Optional[str] = None, end_date: Optional[str] = None):

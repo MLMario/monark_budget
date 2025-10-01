@@ -93,23 +93,38 @@ class MonarkImport:
 
         return transactions
 
-    async def get_bdgt(self):
+    async def get_bdgt(self, bdg_start_date: Optional[str] = None, bdg_end_date: Optional[str] = None):
 
         self._ensures_is_logged_in()
-        budget = await self.monarch.get_budgets()
+
+        if bdg_start_date is None and bdg_end_date is None:
+            # Default to first day of current month to first day of next month
+            today = datetime.now()
+            start_date = today.replace(day=1)
+
+            # Calculate first day of next month
+            if today.month == 12:
+                end_date = datetime(today.year + 1, 1, 1)
+            else:
+                end_date = datetime(today.year, today.month + 1, 1)
+
+            bdg_start_date = start_date.strftime('%Y-%m-%d')
+            bdg_end_date = end_date.strftime('%Y-%m-%d')
+
+        budget = await self.monarch.get_budgets(start_date=bdg_start_date, end_date=bdg_end_date)
         self.imports["budget"] = budget
 
         return budget
 
 
-async def monark_import(pw, user):
+async def monark_import(pw, user, bdg_start_date: Optional[str] = None, bdg_end_date: Optional[str] = None):
 
     data = MonarkImport()
 
     await data.monarch_login( pw = pw, user=user)
 
     transactions = await data.get_txn()
-    budget = await data.get_bdgt()
+    budget = await data.get_bdgt(bdg_start_date=bdg_start_date, bdg_end_date=bdg_end_date)
 
     imports  = {
         "transactions" : transactions,

@@ -96,15 +96,17 @@ class ProcessFlag(BaseModel):
 class BudgetAgentState(BaseModel):
 
     run_meta: RunMeta
-    
+
 # Agent imports data
     # imports from Mongo Db
     current_month_budget: Optional[str] = None
+    past_month_budget: Optional[str] = None
     current_month_txn: Optional[str] = None
     previous_month_txn: Optional[str] = None
 
     last_day_txn: List[str] = [] #filter last day transactions adds them o a list last_day_txn
-    overspend_budget_data: Optional[str] = None # cycles through each budget cateory, checks if its overspend, if so, it creates DailyOverspendCategory instance and adds to list OverspendBudgetData.overspend_categories
+    current_month_overspend_budget_data: Optional[str] = None # cycles through each budget cateory, checks if its overspend, if so, it creates DailyOverspendCategory instance and adds to list OverspendBudgetData.overspend_categories
+    past_month_overspend_budget_data: Optional[str] = None
 
     daily_overspend_alert: DailyAlertOverspend
 
