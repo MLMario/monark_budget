@@ -1,4 +1,4 @@
-# Agent for Money Monark Budget: An Intelligent Financial Companion
+# Monark Budget Agent: Your AI-Powered Financial Companion
 
 ## The Problem: When Budgeting Becomes a Chore
 
@@ -8,285 +8,304 @@ The problem wasn't just that budget tracking was tedious—it was that it felt i
 
 ## The Solution: Meet Your AI Budget Agent
 
-Enter **Monark Budget**—an intelligent agent that transforms budget and raw financial data into personalized, actionable insights. Instead of static reports and generic advice, we built an AI companion that understands our spending personality, catches our bad habits in real-time, and delivers insights with the perfect blend of humor and helpfulness. Or well, at least we tried to—this is still an MVP and has lots of room for improvement, personalization, and learning abilities over time.
+Enter **Monark Budget**—an intelligent agent that transforms raw financial data into personalized, actionable insights delivered straight to your inbox. Instead of static reports and generic advice, we built an AI companion that understands spending patterns, catches bad habits in real-time, and delivers insights with the perfect blend of humor and helpfulness. This is an MVP with lots of room for improvement, personalization, and learning abilities over time.
 
 ### What Our Agent Delivers
 
-**1. Daily Overspend Alerts**  
-Every morning, our agent analyzes our current month's spending and sends personalized alerts when we've already exceeded budget limits in specific categories. No more discovering at month-end that we blew through our coffee shop budget two weeks ago.
+**1. Daily Overspend Alerts**
+Every morning, the agent analyzes your current month's spending and sends personalized alerts when you've already exceeded budget limits in specific categories. No more discovering at month-end that you blew through your dining budget two weeks ago.
 
-**2. Daily Transaction Reviews**  
-The agent reviews yesterday's purchases against our personal savings guidelines (like our notorious weakness for Amazon impulse buys) and creates witty, personalized stories featuring us as characters learning lessons about our spending habits. Think financial advice meets creative storytelling.
+**2. Daily Suspicious Transaction Reviews**
+The agent reviews yesterday's purchases against your personal savings guidelines and creates witty, personalized stories featuring you as the protagonist learning lessons about spending habits. Think financial advice meets creative storytelling—powered by AI reasoning models.
 
-**3. Weekly & End-of-Month Intelligence Reports**  
-When it's time for deeper analysis, our agent compares current and previous month transactions, identifies spending drivers, and provides targeted recommendations for categories where we've overspent. These aren't generic tips—they're data-driven insights specific to our patterns.
+**3. Weekly & End-of-Month Intelligence Reports**
+When it's time for deeper analysis (Mondays for weekly, first of month for monthly), the agent compares budget data with transaction history, identifies spending drivers, and provides targeted recommendations for overspent categories. These aren't generic tips—they're data-driven insights specific to your patterns.
 
 ## The Journey: Building an AI Budget Agent
 
 ### Chapter 1: Cracking the Monarch Money Vault
 
-Our first challenge? Monarch Money Budget App doesn't offer a public API, but it's where all our financial data lives. We needed to become digital detectives.
+Our first challenge? Monarch Money doesn't offer a public API, but it's where all our financial data lives. We needed to become digital detectives.
 
-The solution lives in [this adjusted monarchmoney python package](services/api/pipelines/monarchmoney.py). This package updates an already existing package called...you guessed it, [monarchmoney](https://github.com/hammem/monarchmoney). This package can handle login, session management, and GraphQL queries of several kinds, but sadly, it's outdated and doesn't work well with the current Monarch Money Budget App, so I had no choice but to update it myself. The main issue was that it needed a method to bypass a new Email OTP identification step that's triggered when attempting login from a device Monarch Money doesn't recognize. It also needed updates to reflect the latest version of GraphQL, but that was relatively straightforward to do. The main problem was the email OTP step. After much exploration and ideation, I decided to disgrace myself and implement a 'hacky' fix. Basically, adding our personal chrome browser device_id into the auth header during the login step solved that issue. This will require a manual update at some point, but fortunately, it should only happen once every few months. Unfortunately, it means only we can use this product. 
+The solution lives in our [custom monarchmoney python package](services/api/pipelines/monarchmoney.py). We extended an existing open-source package called [monarchmoney](https://github.com/hammem/monarchmoney) that handles login, session management, and GraphQL queries. However, it was outdated and incompatible with current Monarch Money authentication flows, so we had to update it ourselves.
 
-**Authentication & Session Management:**
-The MonarchMoney class initializes with custom headers including `Device-UUID` to bypass device recognition:
+The main challenge was bypassing the Email OTP identification step triggered when logging in from an unrecognized device. After exploration and testing, we implemented a "hacky" but effective fix: adding our Chrome browser's `Device-UUID` into the authentication header during login. This approach:
+- Tricks Monarch into recognizing our script as a trusted device
+- Requires manual updates only when the device ID expires (roughly every few months)
+- Currently limits the system to single-user usage
 
+Not elegant, but it works. Sometimes pragmatism beats perfection.
+
+**How It Works:**
+
+The authentication system ([monarchmoney.py](services/api/pipelines/monarchmoney.py)) handles:
+- **Custom headers** including `Device-UUID` to bypass OTP verification
+- **Session persistence** using pickle files to avoid repeated logins
+- **Token validation** to reuse existing sessions when available
+- **GraphQL client setup** with proper authentication headers for all API calls
+
+Once authenticated, we extract budget and transaction data through Monarch's internal GraphQL API:
 ```python
-def __init__(self, session_file: str = SESSION_FILE, timeout: int = 10, token: Optional[str] = None):
-    self._headers = {
-        "Accept": "application/json",
-        "Client-Platform": "web", 
-        "Content-Type": "application/json",
-        "User-Agent": "MonarchMoneyAPI (https://github.com/hammem/monarchmoney)",
-        'Device-UUID': Settings.MONARK_DD_ID.get_secret_value()  # Critical for bypassing OTP
-    }
-    if token:
-        self._headers["Authorization"] = f"Token {token}"
+async def get_budgets(self) -> dict:
+    # Fetches budget data with category breakdowns
+    # Returns: actual amounts, planned amounts, remaining amounts
+
+async def get_transactions(self, limit: int = 100) -> list:
+    # Fetches transaction history with merchant details
+    # Returns: amounts, categories, merchants, timestamps
 ```
 
-**Login Flow:**
-The login process handles session persistence and token validation:
-
-```python
-async def login(self, email: str = None, password: str = None, use_saved_session: bool = True):
-    if use_saved_session and os.path.exists(self._session_file):
-        self.load_session(self._session_file)
-        if await self._validate_token():
-            return  # Use existing session
-    
-    await self._login_user(email, password, mfa_secret_key)
-    if save_session:
-        self.save_session(self._session_file)  # Pickle session for reuse
-```
-
-**GraphQL Client Setup:**
-All data extraction happens through a properly configured GraphQL client that includes our authentication headers:
-
-```python
-def _get_graphql_client(self) -> Client:
-    if not self._token and "Authorization" not in self._headers:
-        raise LoginFailedException("Make sure you call login() first!")
-    
-    transport = AIOHTTPTransport(
-        url=MonarchMoneyEndpoints.getGraphQL(),
-        headers=self._headers,  # Includes Device-UUID and Authorization
-        timeout=self._timeout,
-    )
-    return Client(transport=transport, fetch_schema_from_transport=False)
-
-async def gql_call(self, operation: str, graphql_query: DocumentNode, variables: Dict = {}):
-    req = GraphQLRequest(graphql_query, operation_name=operation, variable_values=variables)
-    async with self._get_graphql_client() as session:
-        return await session.execute(req)
-```
-
-**Data Extraction Queries:**
-The core budget data extraction leverages Monarch's internal GraphQL schema:
-
-```python
-async def get_budgets(self) -> str:
-    query = gql("""
-        query GetBudgetData($filters: BudgetSummaryFilters!) {
-            budgetSummary(filters: $filters) {
-                categoryGroups {
-                    categories {
-                        id name actualAmount plannedAmount remainingAmount
-                        # ... detailed budget fields
-                    }
-                }
-            }
-        }
-    """)
-    return await self.gql_call("GetBudgetData", query, variables)
-```
+The entire authentication and data extraction flow is orchestrated in [import_functions.py](services/api/pipelines/import_functions.py), which manages the MonarchMoney client lifecycle and data retrieval operations.
 
 ### Chapter 2: Embracing the MongoDB Life
 
-With data flowing from Monarch, we needed somewhere free and flexible to store it. MongoDB became our financial data warehouse, managed through [`services/api/pipelines/mongo_client.py`](services/api/pipelines/mongo_client.py).
+With data flowing from Monarch, we needed somewhere free and flexible to store it. MongoDB became our financial data warehouse, managed through [mongo_client.py](services/api/pipelines/mongo_client.py).
 
-Our MongoDB setup features:
-- **Async operations** using Motor for daily data import and exports, and Async Motor for data import within node execution
-- **Filtering** with date ranges and category queries enabled
-- **Pydantic Data Validation** ensuring data consistency
-- **Connection management** that properly closes resources
+**Why MongoDB?**
+- Free tier (MongoDB Atlas) is generous enough for personal use
+- Flexible schema perfect for evolving financial data models
+- Async support (Motor) for non-blocking operations in our agent
+- JSON-native storage works seamlessly with Pydantic models
 
-Motor Client creation to use in daily data import from monarch and exporting to Mongo DB
-```python
-class MongoDBClient:
-    def __init__(self):
-        self.client = MongoClient(Settings.MONGO_URL.get_secret_value())
-        self.db = self.client[Settings.MONGO_DB]
-        self.budgets_collection = self.db['budget']
-        self.transactions_collection = self.db['transactions']
-```
+**Our Two-Client Approach:**
 
-Async Client creation to fetch data from MongoDB within node execution
-```python
-class AsyncMongoDBClient:
-    def __init__(self):
-        self.client = AsyncIOMotorClient(Settings.MONGO_URL.get_secret_value())
-        self.db = self.client[Settings.MONGO_DB]
-        self.budgets_collection = self.db['budget']
-        self.transactions_collection = self.db['transactions']
+We use two MongoDB clients for different purposes:
 
-```
+1. **MongoDBClient** (sync) - Used in the data import pipeline for bulk operations:
+   - Connects using standard PyMongo
+   - Performs full collection refreshes (delete all → insert all)
+   - Runs in [data_import_pipeline.py](services/api/pipelines/data_import_pipeline.py)
 
-Imported data goes from JSON to Pydantic back to JSON—seems redundant but it will help raise errors if there are errors in the data. 
+2. **AsyncMongoDBClient** (async) - Used in agent nodes for filtered queries:
+   - Connects using Motor (async driver)
+   - Performs filtered queries with date ranges and category filters
+   - Runs during agent execution in [nodes.py](services/api/app/agent/nodes.py)
+
+**Data Validation Flow:**
+
+Every piece of data goes through Pydantic validation (JSON → Pydantic → JSON). This might seem redundant, but it ensures data consistency and catches errors early:
 
 ```python
-    #Create MongoDB Client to Import Data 
-    mongo_client = AsyncMongoDBClient() 
-    budget_json = await mongo_client.import_budget_data(filter_query={'category_group_type': 'expense'})
-    
-    # Data Model Validation Processing (Implicit given the use of Pydantic models)
-    budget_list_data = json.loads(budget_json)
-    budget_rows = [BudgetRow(**row) for row in budget_list_data]
-    pydantic_budget_model = BudgetData(current_month_budget=budget_rows)
-    state.current_month_budget = pydantic_budget_model.model_dump_json()
+# Fetch from MongoDB
+budget_json = await mongo_client.import_budget_data(
+    filter_query={'category_group_type': 'expense'}
+)
+
+# Validate through Pydantic models
+budget_rows = [BudgetRow(**row) for row in json.loads(budget_json)]
+validated_budget = BudgetData(current_month_budget=budget_rows)
+
+# Store validated JSON in agent state
+state.current_month_budget = validated_budget.model_dump_json()
 ```
+
+This approach has saved us from numerous data inconsistencies and makes debugging much easier.
 
 
 ### Chapter 3: Automating the Data Pipeline
 
-Manual data updates? Not in this household. We built [`this automated pipeline script`](services/api/pipelines/data_import_pipeline.py) to handle the entire extract-transform-load process:
+Manual data updates? Not happening. We built an [automated ETL pipeline](services/api/pipelines/data_import_pipeline.py) to handle the entire extract-transform-load process:
+
+**The Pipeline Flow:**
+
+1. **Extract** - Authenticate with Monarch Money and fetch fresh data
+2. **Transform** - Parse raw GraphQL responses into structured Pydantic models
+3. **Load** - Perform full MongoDB collection refresh with validated data
 
 ```python
 async def run_pipeline():
+    # Authenticate and extract
     mm = MonarchMoney()
     await mm.login()
-    
-    # Extract fresh budget and transaction data
     budget_data = await mm.get_budgets()
     transaction_data = await mm.get_transactions(limit=2000)
-    
-    # Transform and validate through Pydantic models
-    budget_objects = [BudgetRow(**budget) for budget in budget_json]
-    
+
+    # Transform and validate
+    budget_objects = parse_budget_data(budget_data)
+    transaction_objects = parse_transaction_data(transaction_data)
+
     # Load into MongoDB
     mongo_client.export_budget_data(budget_objects)
+    mongo_client.export_transaction_data(transaction_objects)
 ```
 
-The pipeline runs daily via GitHub Actions at 6 AM PST, ensuring our agent always has fresh data to analyze (And it's free!)
+**Automated Execution:**
+
+The pipeline runs daily via [GitHub Actions](.github/workflows/daily_budget_data_git_pipeline.yml) at 6 AM PST:
+- ✅ Free (within GitHub Actions free tier)
+- ✅ Reliable (automated retries on failure)
+- ✅ Secure (credentials stored as GitHub secrets)
+- ✅ Observable (execution logs for debugging)
+
+This ensures our agent always analyzes the most current financial data without any manual intervention.
 
 ### Chapter 4: Building the AI Brain with LangGraph
 
-Here's where things get interesting. We used LangGraph to create a simple agent workflow using [`graphs`](services/api/app/agent/agent_graph.py). This automated workflow processes our financial data through a series of intelligent nodes:
+Here's where things get interesting. We used LangGraph to orchestrate a stateful AI workflow defined in [agent_graph.py](services/api/app/agent/agent_graph.py). Think of it as a flowchart where each node performs specific financial analysis tasks, and the graph intelligently routes between them.
 
 **The Agent Workflow:**
-```python
-# 1. Data Import Node - Fetches and processes MongoDB data
-graph_builder.add_node("import_data_node", import_data_node)
 
-# 2. Daily Analysis Nodes
-graph_builder.add_node("daily_overspend_alert_node", daily_overspend_alert_node)
-graph_builder.add_node("daily_suspicious_transaction_alert_node", daily_suspicious_transaction_alert_node)
-
-# 3. Coordinator Node - Decides if we need period reports (aka, is it EOW or EOM?)
-graph_builder.add_node("coordinator_node", coordinator_node)
-
-# 4. Import Transaction Data Needed for Analysis
-graph_builder.add_node('import_txn_data_for_period_report_node', import_txn_data_for_period_report_node)
-
-# 5. Analysis Node (for weekly/monthly reports)
-graph_builder.add_node("period_report_node", period_report_node)
-
-# 6. Email Node - Crafts the email in HTML code and sends it
-graph_builder.add_node("email_node", email_node)
 ```
+START → Import Data → Daily Overspend Alert → Daily Transaction Review →
+Coordinator → [Conditional Routing] → Period Report → Email → END
+```
+
+The workflow is built with these nodes:
+
+1. **import_data_node** - Fetches budget data and yesterday's transactions from MongoDB
+2. **daily_overspend_alert_node** - Generates alerts for overspent categories
+3. **daily_suspicious_transaction_alert_node** - Reviews each transaction and creates witty stories
+4. **coordinator_node** - Routes workflow based on calendar (daily, EOW Monday, EOM first day)
+5. **import_current_month_txn_node** - Fetches transaction data for weekly reports (EOW path)
+6. **import_previous_month_txn_node** - Fetches transaction data for monthly reports (EOM path)
+7. **eow_period_report_node** - Generates weekly analysis report
+8. **eom_period_report_node** - Generates monthly analysis report
+9. **email_node** - Converts all alerts/reports to HTML and sends email
 
 **The Intelligence Layer:**
 
-The intelligence layer is mostly based on calls to LLM models using Groq API and can be observed within the [`nodes code`](services/api/app/agent/nodes.py). The process leverages many [utility functions](services/api/app/agent/agent_utilities.py) but they are not 'agent capabilities'—meaning they are not tools that an agent can decide to use or not. Initially we had planned to add tools for analysis the agent could use, like creating summaries and statistics for categories and transactions, but we will leave that for future iterations.  
+The magic happens through LLM calls powered by Groq's API ([agent_utilities.py](services/api/app/agent/agent_utilities.py)):
 
-Overall, we use LLM for: 
-- **Overspend Alerts** LLM crafts a personalized, funny alert message and lists all categories above budget 
-- **Transaction classification** using reasoning models to identify transactions that are 'suspicious'—meaning they're likely to be outside our money-saving guidelines
-- **Storytelling** that transforms dry transaction data into engaging, funny narratives
-- **Period reporting** for looking at historical data for spending categories—it analyzes each category independently and then crafts one final report putting everything together with top drivers and recommendations. 
+- **Overspend Alerts** - LLM crafts personalized messages listing overspent categories
+- **Transaction Classification** - Reasoning models identify "suspicious" purchases outside savings guidelines
+- **Narrative Storytelling** - Transforms boring transaction data into engaging, witty stories
+- **Period Reports** - Analyzes each overspent category individually, then synthesizes final insights
 
-We basically call LLM for all these tasks with various settings and processes—if you look through the code... please don't judge us, we know the process is relatively inefficient and wastes a bit of money, but to our credit, iterating on efficiency didn't feel as urgent as actually getting something to work. 
+We use two types of LLM calls:
 
 ```python
-async def call_llm_reasoning(
-    temperature=0.7,
-    prompt_obj=None,
-    model=Settings.GROQ_QWEN_REASONING,
-    reasoning_format='hidden',
-    **kwargs
-):
-    # AI-powered analysis with hidden reasoning chains
-    completion = await client.chat.completions.create(
-        model=model,
-        messages=[...],
-        reasoning_format=reasoning_format
-    )
+# Standard generation (for alerts & storytelling)
+await call_llm(
+    prompt_obj=PROMPT_TEMPLATE,
+    model="llama-3.3-70b-versatile",
+    temperature=0.7
+)
+
+# Reasoning models (for transaction analysis & reports)
+await call_llm_reasoning(
+    prompt_obj=ANALYSIS_PROMPT,
+    model="openai/gpt-oss-120b",
+    reasoning_format='hidden',  # Uses chain-of-thought internally
+    reasoning_effort='high'
+)
 ```
+
+Is this the most efficient implementation? No. But it works, and sometimes shipping beats perfecting. Future iterations will optimize token usage and parallelize LLM calls.
 
 ### Chapter 5: Orchestrating Everything with Main
 
-The final piece was [`main.py`](main.py)—a clean entry point that brings everything together:
+The final piece is [main.py](main.py)—a clean entry point that orchestrates the entire system:
 
 ```python
 async def run_agent() -> BudgetAgentState:
+    # Create and compile the LangGraph workflow
     graph = create_budget_graph()
     app = graph.compile()
-    
+
+    # Initialize agent state with current timestamp and empty data
     initial_state = _build_initial_state()
+
+    # Execute the workflow and return final state
     result = await app.ainvoke(initial_state)
-    
+
     return result
 ```
 
-This creates our agent's initial state (run metadata, empty alerts, process flags), compiles the LangGraph workflow, and executes the entire intelligence pipeline in one clean async call.
+That's it. One function call executes the entire intelligence pipeline: data import → daily analysis → conditional routing → period reports → email delivery.
 
-**GitHub Actions Integration:**
-The crown jewel is our [`.github/workflows/daily_budget_data_git_pipeline.yml`](.github/workflows/daily_budget_data_git_pipeline.yml) that:
-1. Runs the data import pipeline to refresh our MongoDB
-2. Waits 2 minutes for data to settle
-3. Executes `main.py` to run our AI agent
-4. Delivers personalized financial insights to our inboxes
+**The Daily Automation:**
+
+The crown jewel is our [GitHub Actions workflow](.github/workflows/daily_budget_data_git_pipeline.yml) that runs every morning at 6 AM PST:
 
 ```yaml
-- name: Start Agent Pipeline
-  run: |
-    python -m main
+name: Daily Budget Agent Pipeline
+on:
+  schedule:
+    - cron: '0 14 * * *'  # 6 AM PST = 14:00 UTC
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Import Fresh Data
+        run: python -m services.api.pipelines.data_import_pipeline
+
+      - name: Wait for MongoDB Persistence
+        run: sleep 120
+
+      - name: Run AI Agent
+        run: python -m main
 ```
+
+This ensures we wake up every day to fresh, personalized financial insights—no manual work required.
 
 ## The Result: Financial Intelligence, Delivered
 
-Every day, we wake up to emails that don't just tell us we overspent—they tell us *why* we overspent, *what patterns* led to it, and *how we can do better*. Our agent has become like having a witty financial advisor who knows our habits, celebrates our wins, and gently roasts us for our Amazon addiction.
+Every day, we wake up to emails that don't just tell us we overspent—they tell us *why* we overspent, *what patterns* led to it, and *how we can do better*. The agent has become like having a witty financial advisor who knows your habits, celebrates your wins, and gently roasts you for bad spending decisions.
 
-This isn't just automation—it's augmented financial intelligence that transforms the chore of budget tracking into an engaging, personalized experience that actually helps us make better money decisions.
+This isn't just automation—it's augmented financial intelligence that transforms the chore of budget tracking into an engaging, personalized experience that actually helps make better money decisions.
 
-<img src="IMG_1010.jpeg" alt="Email 1" width="25%">
-<img src="IMG_1011.jpeg" alt="Email 2" width="25%">
+**Sample Email Output:**
 
+<img src="IMG_1010.jpeg" alt="Daily Alert Email" width="25%">
+<img src="IMG_1011.jpeg" alt="Period Report Email" width="25%">
 
-## It took me 80 hours to build an AI agent using AI! wait what?
+The emails combine:
+- 📊 **Data-driven alerts** with specific overspend amounts and percentages
+- 📖 **Narrative storytelling** that makes transaction reviews entertaining
+- 💡 **Actionable recommendations** based on actual spending patterns
+- 🎭 **Personality and humor** that keeps financial advice engaging
 
-The objective of this project wasn't just to create something useful for us—it was to learn. As the husband (and coder) in this duo, I built this entire product using AI only as a tool to learn and help with auxiliary tasks. After many trials and errors, I found the sweet spot where I remained deeply challenged and had to think through infrastructure and solutions myself, while still leveraging AI effectively.
+## Building an AI Agent with AI: The 80-Hour Learning Journey
+
+The objective of this project wasn't just to create something useful—it was to learn. As the developer behind this project, I built this entire system using AI as a learning tool, not a code generator. After many trials and errors, I found the sweet spot where I remained deeply challenged and had to think through infrastructure and solutions myself, while still leveraging AI effectively.
 
 **My AI-Assisted Learning Framework:**
 
-**1. Strategic Planning & Architecture**  
-I asked the AI what I needed to implement this project and how to think about designing it. This wasn't about getting code—it was about understanding system architecture, data flow patterns, and technology choices. The AI became my brainstorming partner for the big picture.
+**1. Strategic Planning & Architecture**
+I used AI to understand what I needed to implement and how to design the system. This wasn't about getting code—it was about understanding system architecture, data flow patterns, and technology choices. The AI became my brainstorming partner for the big picture.
 
-**2. Deep Knowledge Acquisition**  
-Whenever I hit knowledge gaps, I didn't just ask for the specific snippet I needed. Instead, I used AI to deep dive into entire concepts. For example, learning LangGraph was not just for my workflow, but as a paradigm for building agent systems. This broader context has empowered me and inspired me to keep building agents for the sake of learning, even though it won't help me with my future day-to-day work as a Data Scientist (but who knows! AI engineering on the horizon? haha)
+**2. Deep Knowledge Acquisition**
+Whenever I hit knowledge gaps, I didn't just ask for specific snippets. Instead, I used AI to deep dive into entire concepts. Learning LangGraph wasn't just about building this workflow—it was about understanding agent systems as a paradigm. This broader context has empowered me to keep building and experimenting beyond this project.
 
-**3. Strategic Decision Making**  
-I treated AI as a thinking partner, sharing my plans and discussing the best strategies for implementing processes and choosing tools. How should I structure my agent nodes? What email sending options do I have? What's the tradeoff between MongoDB and PostgreSQL? These conversations sharpened my technical judgment.
+**3. Strategic Decision Making**
+I treated AI as a thinking partner for architectural decisions. How should I structure agent nodes? What email sending options exist? What's the tradeoff between MongoDB and PostgreSQL? These conversations sharpened my technical judgment and helped me make informed choices.
 
-**4. Bug Detection (Not Solutions)**  
-Instead of waiting for things to break, I used AI to help identify potential pitfalls and then attempted to solve the problems myself. This forced me to truly understand the codebase, error patterns, and debugging strategies. The satisfaction of fixing an issue after wrestling with it for hours? Priceless... sometimes. Most of the time it was Hell Incarnated in my brain.  
+**4. Bug Detection (Not Solutions)**
+I used AI to identify potential pitfalls, then solved problems myself. This forced me to truly understand the codebase, error patterns, and debugging strategies. The satisfaction of fixing an issue after wrestling with it for hours? Priceless... sometimes. Most of the time it was frustrating, but that's where the learning happened.
 
-**5. Test Script Generation**  
-Let's be honest—writing test scripts is tedious. I'm human, and that stuff is boring. AI excelled at generating comprehensive test cases, mock data, and validation scripts, so why not?
+**5. Test Script Generation**
+Let's be honest—writing test scripts is tedious. AI excelled at generating comprehensive test cases ([unitest.py](unitest.py)), mock data, and validation scripts. This freed me to focus on understanding testing patterns rather than writing boilerplate.
 
-**The Result?** 80 hours of intense learning that left me with both a working product *and* genuine knowledge in async Python, GraphQL, LangGraph, MongoDB, and AI agent design. I could have built this faster by copy-pasting AI-generated code, but I would have learned nothing. Instead, I used AI as the ultimate learning accelerator—challenging me to think deeper while handling the grunt work.
+**The Result?**
 
-For now, I will pass over to other exciting projects, but there is still a lot of room for improvement. Send me any recs, recommendations on how to improve this product if you like
+80 hours of intense learning that left me with both a working product *and* genuine knowledge in:
+- ✅ Async Python programming
+- ✅ GraphQL API integration
+- ✅ LangGraph agent workflows
+- ✅ MongoDB data modeling
+- ✅ AI agent design patterns
+- ✅ GitHub Actions CI/CD
+
+I could have built this faster by copy-pasting AI-generated code, but I would have learned nothing. Instead, I used AI as the ultimate learning accelerator—challenging me to think deeper while handling the grunt work.
+
+---
+
+## What's Next?
+
+This project is complete as an MVP, but there's room for improvement:
+
+**Potential Enhancements:**
+- 🔐 Multi-user authentication (OAuth instead of device ID hack)
+- 💾 Agent state persistence for learning from past recommendations
+- 🔄 Retry logic and error recovery for LLM calls
+- ⚡ Parallel LLM processing to reduce execution time
+- 📧 Dynamic recipient configuration
+- 💰 Cost optimization through intelligent caching
+
+For now, this serves its purpose: delivering daily financial insights with personality. If you have recommendations or want to contribute, feel free to open an issue or submit a pull request!
+
+**Technical Documentation:** See [readme_technical.md](readme_technical.md) for detailed architecture, setup instructions, and developer workflows.
 
 
 
